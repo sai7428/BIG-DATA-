@@ -1,0 +1,374 @@
+bash-5.0# cd /spark/bin
+bash-5.0# ./pyspark --master local[*]
+Python 2.7.18 (default, May  3 2020, 22:58:12)
+[GCC 8.3.0] on linux2
+Type "help", "copyright", "credits" or "license" for more information.
+26/06/12 15:24:35 WARN NativeCodeLoader: Unable to load native-hadoop library for your platform... using builtin-java classes where applicable
+Using Spark's default log4j profile: org/apache/spark/log4j-defaults.properties
+Setting default log level to "WARN".
+To adjust logging level use sc.setLogLevel(newLevel). For SparkR, use setLogLevel(newLevel).
+/spark/python/pyspark/context.py:220: DeprecationWarning: Support for Python 2 and Python 3 prior to version 3.6 is deprecated as of Spark 3.0. See also the plan for dropping Python 2 support at https://spark.apache.org/news/plan-for-dropping-python-2-support.html.
+  DeprecationWarning)
+Welcome to
+      ____              __
+     / __/__  ___ _____/ /__
+    _\ \/ _ \/ _ `/ __/  '_/
+   /__ / .__/\_,_/_/ /_/\_\   version 3.0.0
+      /_/
+
+Using Python version 2.7.18 (default, May  3 2020 22:58:12)
+SparkSession available as 'spark'.
+>>> from pyspark.sql.functions import col
+>>>
+>>> df_raw = spark.read.json(
+...     "hdfs://namenode:9000/data/industrial/Industrial_and_Scientific.jsonl"
+... )
+
+>>>
+>>> df_raw.show(5)
++----------+------------+------+-----------+------+--------------------+-------------+--------------------+--------------------+-----------------+
+|      asin|helpful_vote|images|parent_asin|rating|                text|    timestamp|               title|             user_id|verified_purchase|
++----------+------------+------+-----------+------+--------------------+-------------+--------------------+--------------------+-----------------+
+|B08C7HDF1F|           3|    []| B0BX2672L8|   5.0|These masks are g...|1676602453163|Best value for th...|AG2L7H23R5LLKDKLB...|             true|
+|B07BT4YLHT|           1|    []| B07BT4YLHT|   5.0|These scissors ar...|1671844170434|           TOO good.|AG2L7H23R5LLKDKLB...|             true|
+|B06XY65HCX|           0|    []| B06XY65HCX|   4.0|Good. Sensor push...|1579636496378|                Good|AGCI7FAH4GL5FI65H...|             true|
+|B01KW20EQ0|           0|    []| B01KW20EQ0|   5.0|Great ORB finish ...|1530556784971|          Five Stars|AGXVBIUFLFGMVLATY...|             true|
+|B08F59NF33|           0|    []| B08N66L183|   1.0|These masks are n...|1643554243612|Only one ply - wi...|AGBFYI2DDIKXC5Y4F...|             true|
++----------+------------+------+-----------+------+--------------------+-------------+--------------------+--------------------+-----------------+
+only showing top 5 rows
+
+>>> df_raw.printSchema()
+root
+ |-- asin: string (nullable = true)
+ |-- helpful_vote: long (nullable = true)
+ |-- images: array (nullable = true)
+ |    |-- element: struct (containsNull = true)
+ |    |    |-- attachment_type: string (nullable = true)
+ |    |    |-- large_image_url: string (nullable = true)
+ |    |    |-- medium_image_url: string (nullable = true)
+ |    |    |-- small_image_url: string (nullable = true)
+ |-- parent_asin: string (nullable = true)
+ |-- rating: double (nullable = true)
+ |-- text: string (nullable = true)
+ |-- timestamp: long (nullable = true)
+ |-- title: string (nullable = true)
+ |-- user_id: string (nullable = true)
+ |-- verified_purchase: boolean (nullable = true)
+
+>>> df_raw.columns
+['asin', 'helpful_vote', 'images', 'parent_asin', 'rating', 'text', 'timestamp', 'title', 'user_id', 'verified_purchase']
+>>>
+
+>>>
+>>> df = df_raw.select(
+...     "asin",
+...     "user_id",
+...     "rating",
+...     "text",
+...     col("timestamp").alias("review_timestamp"),
+...     "helpful_vote",
+...     "verified_purchase"
+... )
+>>> df.printSchema()
+root
+ |-- asin: string (nullable = true)
+ |-- user_id: string (nullable = true)
+ |-- rating: double (nullable = true)
+ |-- text: string (nullable = true)
+ |-- review_timestamp: long (nullable = true)
+ |-- helpful_vote: long (nullable = true)
+ |-- verified_purchase: boolean (nullable = true)
+
+>>> df.show(5)
++----------+--------------------+------+--------------------+----------------+------------+-----------------+
+|      asin|             user_id|rating|                text|review_timestamp|helpful_vote|verified_purchase|
++----------+--------------------+------+--------------------+----------------+------------+-----------------+
+|B08C7HDF1F|AG2L7H23R5LLKDKLB...|   5.0|These masks are g...|   1676602453163|           3|             true|
+|B07BT4YLHT|AG2L7H23R5LLKDKLB...|   5.0|These scissors ar...|   1671844170434|           1|             true|
+|B06XY65HCX|AGCI7FAH4GL5FI65H...|   4.0|Good. Sensor push...|   1579636496378|           0|             true|
+|B01KW20EQ0|AGXVBIUFLFGMVLATY...|   5.0|Great ORB finish ...|   1530556784971|           0|             true|
+|B08F59NF33|AGBFYI2DDIKXC5Y4F...|   1.0|These masks are n...|   1643554243612|           0|             true|
++----------+--------------------+------+--------------------+----------------+------------+-----------------+
+only showing top 5 rows
+
+>>> df_clean = (
+...     df
+...       .where(col("rating").isNotNull() & col("text").isNotNull())
+...       .where(col("asin").isNotNull() & col("user_id").isNotNull())
+...       .where((col("rating") >= 1.0) & (col("rating") <= 5.0))
+...       .where(col("text") != "")
+... )
+>>>
+>>> df_clean.show(5)
++----------+--------------------+------+--------------------+----------------+------------+-----------------+
+|      asin|             user_id|rating|                text|review_timestamp|helpful_vote|verified_purchase|
++----------+--------------------+------+--------------------+----------------+------------+-----------------+
+|B08C7HDF1F|AG2L7H23R5LLKDKLB...|   5.0|These masks are g...|   1676602453163|           3|             true|
+|B07BT4YLHT|AG2L7H23R5LLKDKLB...|   5.0|These scissors ar...|   1671844170434|           1|             true|
+|B06XY65HCX|AGCI7FAH4GL5FI65H...|   4.0|Good. Sensor push...|   1579636496378|           0|             true|
+|B01KW20EQ0|AGXVBIUFLFGMVLATY...|   5.0|Great ORB finish ...|   1530556784971|           0|             true|
+|B08F59NF33|AGBFYI2DDIKXC5Y4F...|   1.0|These masks are n...|   1643554243612|           0|             true|
++----------+--------------------+------+--------------------+----------------+------------+-----------------+
+only showing top 5 rows
+
+>>>
+Traceback (most recent call last):
+  File "/spark/python/pyspark/context.py", line 274, in signal_handler
+    raise KeyboardInterrupt()
+KeyboardInterrupt
+>>> df.count()
+[Stage 4:>                                                        (0 + 12) / 18]
+5183005
+>>> df_clean.count()
+5182775
+>>> df_clean.write.mode("overwrite").parquet(
+...     "hdfs://namenode:9000/data/industrial/clean_parquet"
+... )
+26/06/12 15:35:24 WARN MemoryManager: Total allocation exceeds 95.00% (906,992,014 bytes) of heap memory
+Scaling row group sizes to 96.54% for 7 writers
+26/06/12 15:35:24 WARN MemoryManager: Total allocation exceeds 95.00% (906,992,014 bytes) of heap memory
+Scaling row group sizes to 84.47% for 8 writers
+26/06/12 15:35:24 WARN MemoryManager: Total allocation exceeds 95.00% (906,992,014 bytes) of heap memory
+Scaling row group sizes to 75.08% for 9 writers
+26/06/12 15:35:24 WARN MemoryManager: Total allocation exceeds 95.00% (906,992,014 bytes) of heap memory
+Scaling row group sizes to 67.58% for 10 writers
+26/06/12 15:35:24 WARN MemoryManager: Total allocation exceeds 95.00% (906,992,014 bytes) of heap memory
+Scaling row group sizes to 61.43% for 11 writers
+26/06/12 15:35:24 WARN MemoryManager: Total allocation exceeds 95.00% (906,992,014 bytes) of heap memory
+Scaling row group sizes to 56.31% for 12 writers
+26/06/12 15:35:37 WARN MemoryManager: Total allocation exceeds 95.00% (906,992,014 bytes) of heap memory
+Scaling row group sizes to 61.43% for 11 writers
+26/06/12 15:35:37 WARN MemoryManager: Total allocation exceeds 95.00% (906,992,014 bytes) of heap memory
+Scaling row group sizes to 67.58% for 10 writers
+26/06/12 15:35:37 WARN MemoryManager: Total allocation exceeds 95.00% (906,992,014 bytes) of heap memory
+Scaling row group sizes to 75.08% for 9 writers
+26/06/12 15:35:37 WARN MemoryManager: Total allocation exceeds 95.00% (906,992,014 bytes) of heap memory
+Scaling row group sizes to 84.47% for 8 writers
+26/06/12 15:35:37 WARN MemoryManager: Total allocation exceeds 95.00% (906,992,014 bytes) of heap memory
+Scaling row group sizes to 96.54% for 7 writers
+>>> df_clean.createOrReplaceTempView("reviews")
+>>> spark.sql("""
+... SELECT
+...     COUNT(*) AS total_reviews,
+...     AVG(rating) AS avg_rating
+... FROM reviews
+... """).show()
+[Stage 11:>                                                       (0 +[Stage 11:======>                                                 (2 +[Stage 11:=====================================>                  (12 [Stage 11:========================================>               (13                                                                       +-------------+----------------+
+|total_reviews|      avg_rating|
++-------------+----------------+
+|      5182775|4.18322983343865|
++-------------+----------------+
+
+>>> spark.sql("""
+... SELECT
+...     rating,
+...     COUNT(*) AS review_count
+... FROM reviews
+... GROUP BY rating
+... ORDER BY rating
+... """).show()
+[Stage 13:>                                                       (0 +[Stage 13:==================>                                     (6 +[Stage 13:========================>                               (8 +[Stage 13:=====================================>                  (12 [Stage 13:========================================>               (13                                                                       +------+------------+
+|rating|review_count|
++------+------------+
+|   1.0|      584101|
+|   2.0|      234752|
+|   3.0|      315781|
+|   4.0|      560914|
+|   5.0|     3487227|
++------+------------+
+
+>>> spark.sql("""
+... SELECT
+...     verified_purchase,
+...     COUNT(*) AS review_count,
+...     AVG(rating) AS avg_rating
+... FROM reviews
+... GROUP BY verified_purchase
+... ORDER BY review_count DESC
+... """).show()
+[Stage 15:>                                                       (0 +[Stage 15:============================>                            (9 [Stage 15:=====================================>                  (12 [Stage 15:========================================>               (13                                                                       +-----------------+------------+-----------------+
+|verified_purchase|review_count|       avg_rating|
++-----------------+------------+-----------------+
+|             true|     4909626|4.188651029630363|
+|            false|      273149|4.085788342626186|
++-----------------+------------+-----------------+
+
+>>> spark.sql("""
+... SELECT
+...     asin,
+...     COUNT(*) AS review_count,
+...     AVG(rating) AS avg_rating
+... FROM reviews
+... GROUP BY asin
+... HAVING COUNT(*) >= 50
+... ORDER BY review_count DESC
+... LIMIT 20
+... """).show(truncate=False)
+[Stage 17:>                                                       (0 +[Stage 17:======>                                                 (2 +[Stage 17:=====================>                                  (7 +[Stage 17:=====================================>                  (12 [Stage 17:========================================>               (13 [Stage 17:=================================================>      (16                                                                       +----------+------------+------------------+
+|asin      |review_count|avg_rating        |
++----------+------------+------------------+
+|B09KZ6TBNY|15842       |3.7755965155914657|
+|B000EFDOOA|14641       |3.902875486647087 |
+|B01NAQD0KD|9389        |4.4064330599637875|
+|B00837ZGRY|8284        |4.467044905842588 |
+|B007Q2M17K|8125        |4.154461538461539 |
+|B078XDFDPY|7233        |4.02903359601825  |
+|B0016HF5GK|6595        |4.139651250947687 |
+|B00FKBR1ZG|6432        |4.7658582089552235|
+|B08C7HDF1F|6273        |3.6497688506296826|
+|B0787Q54M1|5897        |4.312362218076989 |
+|B00DMI632G|5848        |4.498632010943912 |
+|B075PL2GDD|5833        |4.050402880164581 |
+|B086KMYNSS|5815        |3.2225279449699054|
+|B00450U6CS|5547        |4.7086713538849825|
+|B01MYTHWK4|5164        |4.196165762974438 |
+|B07P4DQDHJ|5103        |4.0435038212815995|
+|B01MRLZ43B|4858        |4.5209962947715105|
+|B00O47ILVA|4757        |4.535001051082615 |
+|B000GSLKIW|4604        |4.207211120764552 |
+|B00GS8W3T4|4559        |4.508444834393507 |
++----------+------------+------------------+
+
+>>> spark.sql("""
+... SELECT
+...     user_id,
+...     COUNT(*) AS review_count,
+...     AVG(rating) AS avg_rating
+... FROM reviews
+... GROUP BY user_id
+... HAVING COUNT(*) >= 20
+... ORDER BY review_count DESC
+... LIMIT 20
+... """).show(truncate=False)
+[Stage 20:>                                                       (0 +[Stage 20:======>                                                 (2 +[Stage 20:=====================================>                  (12 [Stage 20:========================================>               (13 [Stage 20:==============================================>         (15 [Stage 21:=========================>                            (95 + [Stage 21:====================================>                (138 +                                                                       +------------------------------+------------+------------------+
+|user_id                       |review_count|avg_rating        |
++------------------------------+------------+------------------+
+|AHPR3DAGWZHHNZW2LBMTXU3PLSLQ  |282         |4.964539007092198 |
+|AH37PMZUFFA52Z3KSD4KLUPJTJGA_1|258         |4.5852713178294575|
+|AGGNEZJKG35QXGBIZADSSC2QNPGA  |257         |4.673151750972763 |
+|AEIIRIHLIYKQGI7ZOCIJTRDF5NPQ  |252         |4.611111111111111 |
+|AGRPLHGW2CR6WWOHT5TOWXDGIZEQ  |224         |4.830357142857143 |
+|AE5VPKX64CVOPH6X75C7EQXAIGLA  |203         |4.25615763546798  |
+|AFUBBODJWQYOZ6WEJNKMBFETOJXQ  |198         |4.712121212121212 |
+|AFEGQEIXILE5NIYM3ALL22HPAVWQ  |195         |4.641025641025641 |
+|AG375WAXLZ7PIOQKIQ6KQB4J3JVQ  |193         |4.595854922279793 |
+|AHTHP23YMBUZJVUAFA6B5VB64APQ  |191         |4.465968586387435 |
+|AHZ3EB3BJLQQIAZYFA3B5YYMVL6A  |186         |4.940860215053763 |
+|AGUZVG452XZS5WY3VEFNLYRF5AIQ  |179         |4.798882681564246 |
+|AEEOEZWAGHOZWHUSTYDPDCJN5BRQ  |179         |4.888268156424581 |
+|AH3WIKRQ2YYBG6MCNE3THLINLOHA  |172         |4.72093023255814  |
+|AHQKQ33RGCDKLAHS2GWL3RDJDWOA  |171         |4.923976608187134 |
+|AEAEDJQSKFUTNYU7AI7DDLUVN46A  |171         |4.666666666666667 |
+|AF2Z3TG57HVNKKEUN4XJXBEMKIOQ  |169         |4.384615384615385 |
+|AHYGVK6W353TCQL63AIECYCGBEJQ  |161         |4.633540372670807 |
+|AEFDPHSJHCEPDWWZW4WVSBIZEZGQ  |157         |4.114649681528663 |
+|AF2OBB2QYADV4PSMGP4SHT7S4UJA  |156         |3.91025641025641  |
++------------------------------+------------+------------------+
+>>> df_ml.createOrReplaceTempView("reviews_ml")
+>>> spark.sql("""
+... SELECT
+...     label,
+...     COUNT(*) AS count,
+...     AVG(rating) AS avg_rating,
+...     AVG(review_length) AS avg_length
+... FROM reviews_ml
+... GROUP BY label
+... ORDER BY label
+... """).show()
+[Stage 23:>                                                       (0 +[Stage 23:======>                                                 (2 +[Stage 23:========================>                               (8 +[Stage 23:==================================>                     (11 [Stage 23:=====================================>                  (12 [Stage 23:========================================>               (13 [Stage 23:=================================================>      (16                                                                       +-----+-------+------------------+------------------+
+|label|  count|        avg_rating|        avg_length|
++-----+-------+------------------+------------------+
+|  0.0|4048141|  4.86143911489249|162.27169903419866|
+|  1.0| 818853|1.2866839347233263| 221.2573489991488|
++-----+-------+------------------+------------------+
+
+>>> spark.sql("""
+... SELECT
+...     label,
+...     AVG(helpful_vote) AS avg_helpful,
+...     MAX(helpful_vote) AS max_helpful
+... FROM reviews_ml
+... GROUP BY label
+... ORDER BY label
+... """).show()
+[Stage 25:>                                                       (0 +[Stage 25:===>                                                    (1 +[Stage 25:========================>                               (8 +[Stage 25:=====================================>                  (12 [Stage 25:========================================>               (13                                                                       +-----+------------------+-----------+
+|label|       avg_helpful|max_helpful|
++-----+------------------+-----------+
+|  0.0|0.8168576638017302|       5611|
+|  1.0|1.4590701872008773|       2721|
++-----+------------------+-----------+
+
+>>> spark.sql("""
+... SELECT
+...     rating,
+...     COUNT(*) AS review_count
+... FROM reviews_ml
+... GROUP BY rating
+... ORDER BY rating
+... """).show()
+[Stage 27:>                                                       (0 +[Stage 27:===>                                                    (1 +[Stage 27:============================>                            (9 [Stage 27:=====================================>                  (12 [Stage 27:========================================>               (13 [Stage 27:=================================================>      (16                                                                       +------+------------+
+|rating|review_count|
++------+------------+
+|   1.0|      584101|
+|   2.0|      234752|
+|   4.0|      560914|
+|   5.0|     3487227|
++------+------------+
+
+>>> spark.sql("""
+... SELECT
+...     verified_purchase,
+...     label,
+...     COUNT(*) AS review_count,
+...     AVG(rating) AS avg_rating
+... FROM reviews_ml
+... GROUP BY verified_purchase, label
+... ORDER BY verified_purchase DESC, label
+... """).show()
+[Stage 29:>                                                       (0 +[Stage 29:===>                                                    (1 +[Stage 29:===============>                                        (5 +[Stage 29:=====================================>                  (12 [Stage 29:========================================>               (13                                                                       +-----------------+-----+------------+------------------+
+|verified_purchase|label|review_count|        avg_rating|
++-----------------+-----+------------+------------------+
+|             true|  0.0|     3839394| 4.863776939798312|
+|             true|  1.0|      771103|1.2882416486513475|
+|            false|  0.0|      208747|4.8184405045341965|
+|            false|  1.0|       47750|1.2615287958115182|
++-----------------+-----+------------+------------------+
+
+>>> spark.sql("""
+... SELECT
+...     asin,
+...     SUM(CASE WHEN label = 1.0 THEN 1 ELSE 0 END) AS negative_reviews,
+...     COUNT(*) AS total_reviews,
+...     AVG(rating) AS avg_rating
+... FROM reviews_ml
+... GROUP BY asin
+... HAVING COUNT(*) >= 50
+... ORDER BY negative_reviews DESC
+... LIMIT 20
+... """).show(truncate=False)
+[Stage 31:>                                                       (0 +[Stage 31:======>                                                 (2 +[Stage 31:==================>                                     (6 +[Stage 31:=====================================>                  (12 [Stage 31:========================================>               (13                                                                       +----------+----------------+-------------+------------------+
+|asin      |negative_reviews|total_reviews|avg_rating        |
++----------+----------------+-------------+------------------+
+|B09KZ6TBNY|4349            |14990        |3.8196797865243495|
+|B000EFDOOA|3405            |13555        |3.9752120988565105|
+|B08GS4CNWB|2559            |3430         |2.0932944606413995|
+|B086KMYNSS|2333            |5291         |3.2445662445662444|
+|B08C7HDF1F|1852            |5782         |3.7049463853337947|
+|B078XDFDPY|1582            |6918         |4.075888985255855 |
+|B09DY1W4L3|1474            |2999         |3.0676892297432476|
+|B073XR4X72|1431            |3272         |3.266809290953545 |
+|B007Q2M17K|1367            |7720         |4.215025906735751 |
+|B08XNHCQCG|1303            |3050         |3.300327868852459 |
+|B099HXCBSW|1217            |1692         |2.1578014184397163|
+|B0016HF5GK|1114            |6227         |4.207001766500722 |
+|B06XKMH86J|1061            |1904         |2.804096638655462 |
+|B01NAQD0KD|1044            |9010         |4.465593784683684 |
+|B075PL2GDD|1037            |5357         |4.143737166324435 |
+|B07P4DQDHJ|1035            |4803         |4.108682073703935 |
+|B09BZM5G1R|962             |1527         |2.572364112639162 |
+|B08YPGJB4P|879             |1520         |2.7263157894736842|
+|B00OAAUAX8|831             |3276         |3.962759462759463 |
+|B0787Q54M1|795             |5551         |4.394163213835345 |
++----------+----------------+-------------+------------------+
+
+>>>

@@ -1,0 +1,113 @@
+PS D:\bigdata-pipeline> dir
+
+
+    Directory: D:\bigdata-pipeline
+
+
+Mode                 LastWriteTime         Length Name
+----                 -------------         ------ ----
+-a----        12-06-2026     13:16           5699 docker-compose.yml
+-a----        12-06-2026     13:16           4218 hadoop.env
+
+
+PS D:\bigdata-pipeline> mkdir notebooks
+
+
+    Directory: D:\bigdata-pipeline
+
+
+Mode                 LastWriteTime         Length Name
+----                 -------------         ------ ----
+d-----        12-06-2026     13:19                notebooks
+
+
+PS D:\bigdata-pipeline> docker compose pull
+time="2026-06-12T13:19:30+02:00" level=warning msg="D:\\bigdata-pipeline\\docker-compose.yml: the attribute `version` is obsolete, it will be ignored, please remove it to avoid potential confusion"
+[+] pull 102/104
+ ✔ Image bde2020/hadoop-resourcemanager:2.0.0-hadoop3.2.1-java8 Pulled                                            217.9s
+ ✔ Image bde2020/hadoop-datanode:2.0.0-hadoop3.2.1-java8        Pulled                                            218.1s
+ ✔ Image jupyter/pyspark-notebook:spark-3.2.0                   Pulled                                            221.9s
+ ✔ Image bde2020/hadoop-nodemanager:2.0.0-hadoop3.2.1-java8     Pulled                                            217.8s
+ ✔ Image bde2020/hive:2.3.2-postgresql-metastore                Pulled                                            218.5s
+ ✔ Image bde2020/hadoop-historyserver:2.0.0-hadoop3.2.1-java8   Pulled                                            218.1s
+ ✔ Image bde2020/spark-master:3.0.0-hadoop3.2                   Pulled                                            191.6s
+ ✔ Image bde2020/hadoop-namenode:2.0.0-hadoop3.2.1-java8        Pulled                                            218.0s
+ ✔ Image bde2020/spark-worker:3.0.0-hadoop3.2                   Pulled                                            191.6s
+ ✔ Image bde2020/hive-metastore-postgresql:2.3.0                Pulled                                             37.6s
+PS D:\bigdata-pipeline> docker compose up -d
+time="2026-06-12T13:23:37+02:00" level=warning msg="D:\\bigdata-pipeline\\docker-compose.yml: the attribute `version` is obsolete, it will be ignored, please remove it to avoid potential confusion"
+[+] up 17/17
+ ✔ Network bigdata-pipeline_default             Created                                                             0.1s
+ ✔ Volume bigdata-pipeline_hadoop_datanode      Created                                                             0.0s
+ ✔ Volume bigdata-pipeline_hadoop_historyserver Created                                                             0.0s
+ ✔ Volume bigdata-pipeline_hadoop_namenode      Created                                                             0.0s
+ ✔ Volume bigdata-pipeline_postgresql           Created                                                             0.0s
+ ✔ Container namenode                           Started                                                             1.5s
+ ✔ Container hive-metastore-postgresql          Started                                                             1.5s
+ ✔ Container datanode                           Started                                                             1.4s
+ ✔ Container hive-metastore                     Started                                                             1.9s
+ ✔ Container resourcemanager                    Started                                                             1.7s
+ ✔ Container spark-master                       Started                                                             1.8s
+ ✔ Container nodemanager                        Started                                                             2.0s
+ ✔ Container historyserver                      Started                                                             2.1s
+ ✔ Container spark-worker-2                     Started                                                             2.3s
+ ✔ Container jupyter                            Started                                                             2.4s
+ ✔ Container spark-worker-1                     Started                                                             2.4s
+ ✔ Container hive-server                        Started                                                             2.3s
+
+What's next:
+    Filter, search, and stream logs from all your Compose services
+    in one place with Docker Desktop's Logs view. docker-desktop://dashboard/logs
+PS D:\bigdata-pipeline> docker ps
+CONTAINER ID   IMAGE                                                    COMMAND                  CREATED          STATUS                            PORTS                                                                                              NAMES
+25c2f2992020   jupyter/pyspark-notebook:spark-3.2.0                     "tini -g -- start-no…"   9 seconds ago    Up 6 seconds                      0.0.0.0:8888->8888/tcp, [::]:8888->8888/tcp                                                        jupyter
+12d66d6e5518   bde2020/hive:2.3.2-postgresql-metastore                  "entrypoint.sh /bin/…"   9 seconds ago    Up 6 seconds                      0.0.0.0:10000->10000/tcp, [::]:10000->10000/tcp, 0.0.0.0:10002->10002/tcp, [::]:10002->10002/tcp   hive-server
+68108f47bb73   bde2020/spark-worker:3.0.0-hadoop3.2                     "/bin/bash /worker.sh"   9 seconds ago    Up 6 seconds                      0.0.0.0:8082->8081/tcp, [::]:8082->8081/tcp                                                        spark-worker-2
+58fa80b35c18   bde2020/spark-worker:3.0.0-hadoop3.2                     "/bin/bash /worker.sh"   9 seconds ago    Up 6 seconds                      0.0.0.0:8081->8081/tcp, [::]:8081->8081/tcp                                                        spark-worker-1
+96d3e99d47bf   bde2020/hadoop-historyserver:2.0.0-hadoop3.2.1-java8     "/entrypoint.sh /run…"   9 seconds ago    Up 7 seconds (health: starting)   0.0.0.0:8188->8188/tcp, [::]:8188->8188/tcp                                                        historyserver
+c9a5da7fbadd   bde2020/hadoop-nodemanager:2.0.0-hadoop3.2.1-java8       "/entrypoint.sh /run…"   9 seconds ago    Up 7 seconds (health: starting)   8042/tcp                                                                                           nodemanager
+eced94aa0d05   bde2020/spark-master:3.0.0-hadoop3.2                     "/bin/bash /master.sh"   9 seconds ago    Up 7 seconds                      0.0.0.0:7077->7077/tcp, [::]:7077->7077/tcp, 0.0.0.0:8080->8080/tcp, [::]:8080->8080/tcp           spark-master
+827cfb1042d1   bde2020/hive:2.3.2-postgresql-metastore                  "entrypoint.sh /opt/…"   9 seconds ago    Up 7 seconds                      0.0.0.0:9083->9083/tcp, [::]:9083->9083/tcp                                                        hive-metastore
+7fd1d7e12f49   bde2020/hadoop-resourcemanager:2.0.0-hadoop3.2.1-java8   "/entrypoint.sh /run…"   9 seconds ago    Up 7 seconds (health: starting)   0.0.0.0:8088->8088/tcp, [::]:8088->8088/tcp                                                        resourcemanager
+020ec10947e2   bde2020/hadoop-datanode:2.0.0-hadoop3.2.1-java8          "/entrypoint.sh /run…"   9 seconds ago    Up 7 seconds (health: starting)   9864/tcp                                                                                           datanode
+81f0201dbf7d   bde2020/hive-metastore-postgresql:2.3.0                  "/docker-entrypoint.…"   10 seconds ago   Up 8 seconds (health: starting)   5432/tcp                                                                                           hive-metastore-postgresql
+5990b275f9b4   bde2020/hadoop-namenode:2.0.0-hadoop3.2.1-java8          "/entrypoint.sh /run…"   10 seconds ago   Up 8 seconds (health: starting)   0.0.0.0:9000->9000/tcp, [::]:9000->9000/tcp, 0.0.0.0:9870->9870/tcp, [::]:9870->9870/tcp           namenode
+PS D:\bigdata-pipeline> docker cp D:\bigdata-pipeline\Industrial_and_Scientific.jsonl.gz namenode:/tmp/
+Successfully copied 676MB (transferred 676MB) to namenode:/tmp/
+PS D:\bigdata-pipeline> docker exec namenode gunzip /tmp/Industrial_and_Scientific.jsonl.gz
+PS D:\bigdata-pipeline> docker exec namenode hdfs dfs -mkdir -p /data/industrial
+PS D:\bigdata-pipeline> docker exec namenode hdfs dfs -put /tmp/Industrial_and_Scientific.jsonl /data/industrial/
+2026-06-12 11:30:52,951 INFO sasl.SaslDataTransferClient: SASL encryption trust check: localHostTrusted = false, remoteHostTrusted = false
+2026-06-12 11:30:53,335 INFO sasl.SaslDataTransferClient: SASL encryption trust check: localHostTrusted = false, remoteHostTrusted = false
+2026-06-12 11:30:54,994 INFO sasl.SaslDataTransferClient: SASL encryption trust check: localHostTrusted = false, remoteHostTrusted = false
+2026-06-12 11:30:55,740 INFO sasl.SaslDataTransferClient: SASL encryption trust check: localHostTrusted = false, remoteHostTrusted = false
+2026-06-12 11:30:57,348 INFO sasl.SaslDataTransferClient: SASL encryption trust check: localHostTrusted = false, remoteHostTrusted = false
+2026-06-12 11:30:59,903 INFO sasl.SaslDataTransferClient: SASL encryption trust check: localHostTrusted = false, remoteHostTrusted = false
+2026-06-12 11:31:02,157 INFO sasl.SaslDataTransferClient: SASL encryption trust check: localHostTrusted = false, remoteHostTrusted = false
+2026-06-12 11:31:02,985 INFO sasl.SaslDataTransferClient: SASL encryption trust check: localHostTrusted = false, remoteHostTrusted = false
+2026-06-12 11:31:04,248 INFO sasl.SaslDataTransferClient: SASL encryption trust check: localHostTrusted = false, remoteHostTrusted = false
+2026-06-12 11:31:04,771 INFO sasl.SaslDataTransferClient: SASL encryption trust check: localHostTrusted = false, remoteHostTrusted = false
+2026-06-12 11:31:05,584 INFO sasl.SaslDataTransferClient: SASL encryption trust check: localHostTrusted = false, remoteHostTrusted = false
+2026-06-12 11:31:06,612 INFO sasl.SaslDataTransferClient: SASL encryption trust check: localHostTrusted = false, remoteHostTrusted = false
+2026-06-12 11:31:07,709 INFO sasl.SaslDataTransferClient: SASL encryption trust check: localHostTrusted = false, remoteHostTrusted = false
+2026-06-12 11:31:08,300 INFO sasl.SaslDataTransferClient: SASL encryption trust check: localHostTrusted = false, remoteHostTrusted = false
+2026-06-12 11:31:09,333 INFO sasl.SaslDataTransferClient: SASL encryption trust check: localHostTrusted = false, remoteHostTrusted = false
+2026-06-12 11:31:09,990 INFO sasl.SaslDataTransferClient: SASL encryption trust check: localHostTrusted = false, remoteHostTrusted = false
+2026-06-12 11:31:10,769 INFO sasl.SaslDataTransferClient: SASL encryption trust check: localHostTrusted = false, remoteHostTrusted = false
+2026-06-12 11:31:11,472 INFO sasl.SaslDataTransferClient: SASL encryption trust check: localHostTrusted = false, remoteHostTrusted = false
+PS D:\bigdata-pipeline> docker exec namenode hdfs dfs -ls /data/industrial/
+Found 1 items
+-rw-r--r--   1 root supergroup 2347015351 2026-06-12 11:31 /data/industrial/Industrial_and_Scientific.jsonl
+PS D:\bigdata-pipeline> docker exec namenode hdfs dfs -cat /data/industrial/Industrial_and_Scientific.jsonl | wc -l
+wc : The term 'wc' is not recognized as the name of a cmdlet, function, script file, or operable program. Check the
+spelling of the name, or if a path was included, verify that the path is correct and try again.
+At line:1 char:87
++ ... dfs dfs -cat /data/industrial/Industrial_and_Scientific.jsonl | wc -l
++                                                                     ~~
+    + CategoryInfo          : ObjectNotFound: (wc:String) [], CommandNotFoundException
+    + FullyQualifiedErrorId : CommandNotFoundException
+
+PS D:\bigdata-pipeline> docker exec namenode bash -c "hdfs dfs -cat /data/industrial/Industrial_and_Scientific.jsonl | wc -l"
+2026-06-12 11:32:43,646 INFO sasl.SaslDataTransferClient: SASL encryption trust check: localHostTrusted = false, remoteHostTrusted = false
+5183005
+PS D:\bigdata-pipeline>

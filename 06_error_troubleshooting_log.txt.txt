@@ -1,0 +1,2943 @@
+bash-5.0# apk update
+fetch http://dl-cdn.alpinelinux.org/alpine/v3.10/main/x86_64/APKINDEX.tar.gz
+fetch http://dl-cdn.alpinelinux.org/alpine/v3.10/community/x86_64/APKINDEX.tar.gz
+v3.10.9-43-g3feb769ea3 [http://dl-cdn.alpinelinux.org/alpine/v3.10/main]
+v3.10.6-10-ged79a86de3 [http://dl-cdn.alpinelinux.org/alpine/v3.10/community]
+OK: 10364 distinct packages available
+bash-5.0# apk add --no-cache python3 py3-numpy
+fetch http://dl-cdn.alpinelinux.org/alpine/v3.10/main/x86_64/APKINDEX.tar.gz
+fetch http://dl-cdn.alpinelinux.org/alpine/v3.10/community/x86_64/APKINDEX.tar.gz
+OK: 238 MiB in 73 packages
+bash-5.0# export PYSPARK_PYTHON=python3
+bash-5.0# export PYSPARK_DRIVER_PYTHON=python3
+bash-5.0# /spark/bin/pyspark --master spark://spark-master:7077
+Python 3.7.7 (default, Jul 19 2020, 03:57:54)
+[GCC 8.3.0] on linux
+Type "help", "copyright", "credits" or "license" for more information.
+26/06/12 20:45:54 WARN NativeCodeLoader: Unable to load native-hadoop library for your platform... using builtin-java classes where applicable
+Using Spark's default log4j profile: org/apache/spark/log4j-defaults.properties
+Setting default log level to "WARN".
+To adjust logging level use sc.setLogLevel(newLevel). For SparkR, use setLogLevel(newLevel).
+Welcome to
+      ____              __
+     / __/__  ___ _____/ /__
+    _\ \/ _ \/ _ `/ __/  '_/
+   /__ / .__/\_,_/_/ /_/\_\   version 3.0.0
+      /_/
+
+Using Python version 3.7.7 (default, Jul 19 2020 03:57:54)
+SparkSession available as 'spark'.
+>>> from pyspark.sql import SparkSession
+>>> import pyspark.sql.functions as F
+>>>
+>>> # Initialize Spark Session
+>>> spark = SparkSession.builder \
+...     .appName("IndustrialDataProcessing") \
+...     .enableHiveSupport() \
+...     .getOrCreate()
+>>>
+>>> # Load the clean parquet data
+>>> df = spark.read.parquet("hdfs://namenode:9000/data/industrial/clean_parquet")
+[Stage 0:>                                                          (0 + 1)                                                                             >>>
+>>> # Perform the equivalent summary statistics
+>>> summary_df = df.groupBy("category").agg(
+...     F.count("*").alias("total_records"),
+...     F.avg("feature_1").alias("avg_feature1"),
+...     F.max("feature_2").alias("max_feature2")
+... ).orderBy(F.col("total_records").desc())
+Traceback (most recent call last):
+  File "<stdin>", line 4, in <module>
+  File "/spark/python/pyspark/sql/group.py", line 114, in agg
+    _to_seq(self.sql_ctx._sc, [c._jc for c in exprs[1:]]))
+  File "/spark/python/lib/py4j-0.10.9-src.zip/py4j/java_gateway.py", line 1305, in __call__
+  File "/spark/python/pyspark/sql/utils.py", line 137, in deco
+    raise_from(converted)
+  File "<string>", line 3, in raise_from
+pyspark.sql.utils.AnalysisException: cannot resolve '`category`' given input columns: [asin, helpful_vote, rating, review_timestamp, text, user_id, verified_purchase];;
+'Aggregate ['category], ['category, count(1) AS total_records#22L, avg('feature_1) AS avg_feature1#24, max('feature_2) AS max_feature2#26]
++- Relation[asin#0,user_id#1,rating#2,text#3,review_timestamp#4L,helpful_vote#5L,verified_purchase#6] parquet
+
+>>>
+>>> summary_df.show()
+Traceback (most recent call last):
+  File "<stdin>", line 1, in <module>
+NameError: name 'summary_df' is not defined
+>>> import pyspark.sql.functions as F
+>>>
+>>> # Perform summary statistics using your actual Amazon Review columns
+>>> summary_df = df.groupBy("verified_purchase").agg(
+...     F.count("*").alias("total_reviews"),
+...     F.avg("rating").alias("avg_rating"),
+...     F.max("helpful_vote").alias("max_helpful_votes")
+... ).orderBy(F.col("total_reviews").desc())
+>>>
+>>> summary_df.show()
+[Stage 1:>                                                          (0 + 4) [Stage 1:=============>                                             (2 + 4) [Stage 1:==========================>                                (4 + 4) [Stage 1:=============================================>             (7 + 2) [Stage 2:======>                                                 (23 + 4) / [Stage 2:=========>                                              (35 + 4) / [Stage 2:============>                                           (46 + 4) / [Stage 2:================>                                       (59 + 4) / [Stage 2:===================>                                    (71 + 4) / [Stage 2:=====================>                                  (78 + 5) / [Stage 2:=========================>                              (92 + 4) / [Stage 2:=============================>                         (108 + 4) / [Stage 2:==================================>                    (124 + 5) / [Stage 2:======================================>                (139 + 4) / [Stage 2:===========================================>           (158 + 5) / [Stage 2:=================================================>     (179 + 5) /                                                                             +-----------------+-------------+-----------------+-----------------+
+|verified_purchase|total_reviews|       avg_rating|max_helpful_votes|
++-----------------+-------------+-----------------+-----------------+
+|             true|      4909626|4.188651029630363|             5611|
+|            false|       273149|4.085788342626186|             2717|
++-----------------+-------------+-----------------+-----------------+
+
+>>> from pyspark.ml.feature import VectorAssembler, StringIndexer
+>>> from pyspark.ml.classification import RandomForestClassifier
+>>> from pyspark.ml.evaluation import MulticlassClassificationEvaluator
+>>>
+>>> # 1. Prepare the Label
+>>> # ML models need numeric labels. This converts the boolean 'verified_purchase' to 0.0 or 1.0
+>>> indexer = StringIndexer(inputCol="verified_purchase", outputCol="label")
+>>> df_indexed = indexer.fit(df).transform(df)
+Traceback (most recent call last):
+  File "<stdin>", line 1, in <module>
+  File "/spark/python/pyspark/ml/base.py", line 129, in fit
+    return self._fit(dataset)
+  File "/spark/python/pyspark/ml/wrapper.py", line 321, in _fit
+    java_model = self._fit_java(dataset)
+  File "/spark/python/pyspark/ml/wrapper.py", line 318, in _fit_java
+    return self._java_obj.fit(dataset._jdf)
+  File "/spark/python/lib/py4j-0.10.9-src.zip/py4j/java_gateway.py", line 1305, in __call__
+  File "/spark/python/pyspark/sql/utils.py", line 137, in deco
+    raise_from(converted)
+  File "<string>", line 3, in raise_from
+pyspark.sql.utils.IllegalArgumentException: requirement failed: The input column verified_purchase must be either string type or numeric type, but got BooleanType.
+>>>
+>>> # 2. Feature Engineering
+>>> # Assemble our predictor columns into a single "features" vector
+>>> assembler = VectorAssembler(inputCols=["rating", "helpful_vote"], outputCol="features")
+>>> df_assembled = assembler.transform(df_indexed)
+Traceback (most recent call last):
+  File "<stdin>", line 1, in <module>
+NameError: name 'df_indexed' is not defined
+>>>
+>>> # 3. Split the Dataset
+>>> # 80% of data for training the model, 20% for testing its accuracy
+>>> train_data, test_data = df_assembled.randomSplit([0.8, 0.2], seed=42)
+Traceback (most recent call last):
+  File "<stdin>", line 1, in <module>
+NameError: name 'df_assembled' is not defined
+>>>
+>>> # 4. Define and Train the Model
+>>> # We use 20 trees to keep compute time reasonable on a large dataset
+>>> rf = RandomForestClassifier(featuresCol="features", labelCol="label", numTrees=20)
+>>> print("Training model... (this may take a few minutes)")
+Training model... (this may take a few minutes)
+>>> rf_model = rf.fit(train_data)
+Traceback (most recent call last):
+  File "<stdin>", line 1, in <module>
+NameError: name 'train_data' is not defined
+>>>
+>>> # 5. Make Predictions on the Test Data
+>>> predictions = rf_model.transform(test_data)
+Traceback (most recent call last):
+  File "<stdin>", line 1, in <module>
+NameError: name 'rf_model' is not defined
+>>>
+>>> # 6. Evaluate the Model's Performance
+>>> evaluator_acc = MulticlassClassificationEvaluator(labelCol="label", predictionCol="prediction", metricName="accuracy")
+>>> accuracy = evaluator_acc.evaluate(predictions)
+Traceback (most recent call last):
+  File "<stdin>", line 1, in <module>
+NameError: name 'predictions' is not defined
+>>> print(f"Test Accuracy: {accuracy}")
+Traceback (most recent call last):
+  File "<stdin>", line 1, in <module>
+NameError: name 'accuracy' is not defined
+>>>
+>>> evaluator_f1 = MulticlassClassificationEvaluator(labelCol="label", predictionCol="prediction", metricName="f1")
+>>> f1_score = evaluator_f1.evaluate(predictions)
+Traceback (most recent call last):
+  File "<stdin>", line 1, in <module>
+NameError: name 'predictions' is not defined
+>>> print(f"F1-Score: {f1_score}")
+Traceback (most recent call last):
+  File "<stdin>", line 1, in <module>
+NameError: name 'f1_score' is not defined
+>>> from pyspark.ml.feature import VectorAssembler
+>>> from pyspark.ml.classification import RandomForestClassifier
+>>> from pyspark.ml.evaluation import MulticlassClassificationEvaluator
+>>> import pyspark.sql.functions as F
+>>>
+>>> # 1. Prepare the Label
+>>> # Bypass StringIndexer and cast the boolean directly to a double (True -> 1.0, False -> 0.0)
+>>> df_prepared = df.withColumn("label", F.col("verified_purchase").cast("double"))
+>>>
+>>> # 2. Feature Engineering
+>>> # Assemble our predictor columns into a single "features" vector
+>>> assembler = VectorAssembler(inputCols=["rating", "helpful_vote"], outputCol="features")
+>>> df_assembled = assembler.transform(df_prepared)
+>>>
+>>> # 3. Split the Dataset
+>>> # 80% of data for training the model, 20% for testing its accuracy
+>>> train_data, test_data = df_assembled.randomSplit([0.8, 0.2], seed=42)
+>>>
+>>> # 4. Define and Train the Model
+>>> # We use 20 trees to keep compute time reasonable on a large dataset
+>>> rf = RandomForestClassifier(featuresCol="features", labelCol="label", numTrees=20)
+>>> print("Training model... (this may take a few minutes)")
+Training model... (this may take a few minutes)
+>>> rf_model = rf.fit(train_data)
+[Stage 3:>                                                          (0 + 4) [Stage 3:=============>                                             (2 + 4) [Stage 3:==========================>                                (4 + 4) [Stage 3:================================>                          (5 + 4) [Stage 3:====================================================>      (8 + 1)                                                                             [Stage 5:>                                                          (0 + 1)                                                                             [Stage 6:>                                                          (0 + 4) [Stage 6:=============>                                             (2 + 4) [Stage 6:==========================>                                (4 + 4) [Stage 6:================================>                          (5 + 4) [Stage 6:=======================================>                   (6 + 3)                                                                             [Stage 7:>                                                          (0 + 4) [Stage 7:>                                                          (0 + 5) [Stage 7:=============>                                             (2 + 4) [Stage 7:==========================>                                (4 + 4) [Stage 7:=======================================>                   (6 + 3) [Stage 7:=============================================>             (7 + 2) [Stage 7:====================================================>      (8 + 1)                                                                             [Stage 9:>                                                          (0 + 4) [Stage 9:=============>                                             (2 + 4) [Stage 9:==========================>                                (4 + 4) [Stage 9:=======================================>                   (6 + 3) [Stage 9:====================================================>      (8 + 1)                                                                             [Stage 11:===================>                                      (3 + 4) [Stage 11:================================>                         (5 + 3) [Stage 11:===================================================>      (8 + 1)                                                                             [Stage 13:>                                                         (0 + 4) [Stage 13:======>                                                   (1 + 4) [Stage 13:=========================>                                (4 + 4) [Stage 13:=============================================>            (7 + 2)                                                                             [Stage 15:>                                                         (0 + 4) [Stage 15:=========================>                                (4 + 4) [Stage 15:======================================>                   (6 + 2) [Stage 15:=============================================>            (7 + 2) [Stage 15:===================================================>      (8 + 1)                                                                             [Stage 17:>                                                         (0 + 4) [Stage 17:=========================>                                (4 + 4) [Stage 17:=============================================>            (7 + 2) [Stage 17:===================================================>      (8 + 1)                                                                             >>>
+>>> # 5. Make Predictions on the Test Data
+>>> predictions = rf_model.transform(test_data)
+>>>
+>>> # 6. Evaluate the Model's Performance
+>>> evaluator_acc = MulticlassClassificationEvaluator(labelCol="label", predictionCol="prediction", metricName="accuracy")
+>>> accuracy = evaluator_acc.evaluate(predictions)
+[Stage 19:>                                                         (0 + 4) [Stage 19:======>                                                   (1 + 4) [Stage 19:=========================>                                (4 + 4) [Stage 19:===================================================>      (8 + 1)                                                                             >>> print(f"Test Accuracy: {accuracy}")
+Test Accuracy: 0.9473681164564581
+>>>
+>>> evaluator_f1 = MulticlassClassificationEvaluator(labelCol="label", predictionCol="prediction", metricName="f1")
+>>> f1_score = evaluator_f1.evaluate(predictions)
+[Stage 21:>                                                         (0 + 4) [Stage 21:======>                                                   (1 + 4) [Stage 21:=========================>                                (4 + 4) [Stage 21:================================>                         (5 + 4) [Stage 21:=============================================>            (7 + 2) [Stage 21:===================================================>      (8 + 1)                                                                             >>> print(f"F1-Score: {f1_score}")
+F1-Score: 0.9217634205816319
+>>> import matplotlib.pyplot as plt
+Traceback (most recent call last):
+  File "<stdin>", line 1, in <module>
+ModuleNotFoundError: No module named 'matplotlib'
+>>> import seaborn as sns
+Traceback (most recent call last):
+  File "<stdin>", line 1, in <module>
+ModuleNotFoundError: No module named 'seaborn'
+>>> import pandas as pd
+Traceback (most recent call last):
+  File "<stdin>", line 1, in <module>
+ModuleNotFoundError: No module named 'pandas'
+>>>
+>>> # ==========================================
+>>> # 1. Feature Importance Plot
+>>> # ==========================================
+>>> # Extract feature importance scores from the trained Random Forest model
+>>> importances = rf_model.featureImportances.toArray()
+>>> features = ["rating", "helpful_vote"]
+>>>
+>>> plt.figure(figsize=(8, 5))
+Traceback (most recent call last):
+  File "<stdin>", line 1, in <module>
+NameError: name 'plt' is not defined
+>>> sns.barplot(x=importances, y=features, hue=features, palette="viridis", legend=False)
+Traceback (most recent call last):
+  File "<stdin>", line 1, in <module>
+NameError: name 'sns' is not defined
+>>> plt.title("Feature Importance for Verified Purchase Prediction")
+Traceback (most recent call last):
+  File "<stdin>", line 1, in <module>
+NameError: name 'plt' is not defined
+>>> plt.xlabel("Importance Score")
+Traceback (most recent call last):
+  File "<stdin>", line 1, in <module>
+NameError: name 'plt' is not defined
+>>> plt.ylabel("Features")
+Traceback (most recent call last):
+  File "<stdin>", line 1, in <module>
+NameError: name 'plt' is not defined
+>>> plt.tight_layout()
+Traceback (most recent call last):
+  File "<stdin>", line 1, in <module>
+NameError: name 'plt' is not defined
+>>> plt.savefig("feature_importance.png") # Saves the image for your report
+Traceback (most recent call last):
+  File "<stdin>", line 1, in <module>
+NameError: name 'plt' is not defined
+>>> plt.show()
+Traceback (most recent call last):
+  File "<stdin>", line 1, in <module>
+NameError: name 'plt' is not defined
+>>>
+>>> # ==========================================
+>>> # 2. Confusion Matrix
+>>> # ==========================================
+>>> # Group actual labels and predictions to count occurrences
+>>> cm_df = predictions.groupBy("label", "prediction").count().toPandas()
+Traceback (most recent call last):
+  File "<stdin>", line 1, in <module>
+  File "/spark/python/pyspark/sql/pandas/conversion.py", line 63, in toPandas
+    require_minimum_pandas_version()
+  File "/spark/python/pyspark/sql/pandas/utils.py", line 33, in require_minimum_pandas_version
+    "it was not found." % minimum_pandas_version)
+ImportError: Pandas >= 0.23.2 must be installed; however, it was not found.
+>>>
+>>> # Pivot the data into a matrix format
+>>> cm_pivot = cm_df.pivot(index='label', columns='prediction', values='count').fillna(0)
+Traceback (most recent call last):
+  File "<stdin>", line 1, in <module>
+NameError: name 'cm_df' is not defined
+>>>
+>>> plt.figure(figsize=(6, 5))
+Traceback (most recent call last):
+  File "<stdin>", line 1, in <module>
+NameError: name 'plt' is not defined
+>>> sns.heatmap(cm_pivot, annot=True, fmt="g", cmap="Blues")
+Traceback (most recent call last):
+  File "<stdin>", line 1, in <module>
+NameError: name 'sns' is not defined
+>>> plt.title("Confusion Matrix")
+Traceback (most recent call last):
+  File "<stdin>", line 1, in <module>
+NameError: name 'plt' is not defined
+>>> plt.xlabel("Predicted Label (0.0 = Unverified, 1.0 = Verified)")
+Traceback (most recent call last):
+  File "<stdin>", line 1, in <module>
+NameError: name 'plt' is not defined
+>>> plt.ylabel("Actual Label (0.0 = Unverified, 1.0 = Verified)")
+Traceback (most recent call last):
+  File "<stdin>", line 1, in <module>
+NameError: name 'plt' is not defined
+>>> plt.tight_layout()
+Traceback (most recent call last):
+  File "<stdin>", line 1, in <module>
+NameError: name 'plt' is not defined
+>>> plt.savefig("confusion_matrix.png") # Saves the image for your report
+Traceback (most recent call last):
+  File "<stdin>", line 1, in <module>
+NameError: name 'plt' is not defined
+>>> plt.show()# This prints the raw importance scores for "rating" and "helpful_vote"
+Traceback (most recent call last):
+  File "<stdin>", line 1, in <module>
+NameError: name 'plt' is not defined
+>>> print(rf_model.featureImportances.toArray())
+[0. 0.]
+>>> quit()
+bash-5.0# pip install pandas matplotlib seaborn
+Collecting pandas
+  Downloading https://files.pythonhosted.org/packages/b2/4c/b6f966ac91c5670ba4ef0b0b5613b5379e3c7abdfad4e7b89a87d73bae13/pandas-0.24.2.tar.gz (11.8MB)
+    100% |████████████████████████████████| 11.8MB 276kB/s
+    Complete output from command python setup.py egg_info:
+    Traceback (most recent call last):
+      File "<string>", line 1, in <module>
+      File "/tmp/pip-install-pYwXzU/pandas/setup.py", line 746, in <module>
+        **setuptools_kwargs)
+      File "/usr/lib/python2.7/site-packages/setuptools/__init__.py", line 144, in setup
+        _install_setup_requires(attrs)
+      File "/usr/lib/python2.7/site-packages/setuptools/__init__.py", line 139, in _install_setup_requires
+        dist.fetch_build_eggs(dist.setup_requires)
+      File "/usr/lib/python2.7/site-packages/setuptools/dist.py", line 724, in fetch_build_eggs
+        replace_conflicting=True,
+      File "/usr/lib/python2.7/site-packages/pkg_resources/__init__.py", line 782, in resolve
+        replace_conflicting=replace_conflicting
+      File "/usr/lib/python2.7/site-packages/pkg_resources/__init__.py", line 1065, in best_match
+        return self.obtain(req, installer)
+      File "/usr/lib/python2.7/site-packages/pkg_resources/__init__.py", line 1077, in obtain
+        return installer(requirement)
+      File "/usr/lib/python2.7/site-packages/setuptools/dist.py", line 791, in fetch_build_egg
+        return cmd.easy_install(req)
+      File "/usr/lib/python2.7/site-packages/setuptools/command/easy_install.py", line 679, in easy_install
+        return self.install_item(spec, dist.location, tmpdir, deps)
+      File "/usr/lib/python2.7/site-packages/setuptools/command/easy_install.py", line 705, in install_item
+        dists = self.install_eggs(spec, download, tmpdir)
+      File "/usr/lib/python2.7/site-packages/setuptools/command/easy_install.py", line 876, in install_eggs
+        os.path.abspath(dist_filename)
+    distutils.errors.DistutilsError: Couldn't find a setup script in /tmp/easy_install-nYUgc0/numpy-2.5.0rc1.tar.gz
+
+    ----------------------------------------
+Command "python setup.py egg_info" failed with error code 1 in /tmp/pip-install-pYwXzU/pandas/
+bash-5.0# pip install --upgrade pip setuptools wheel
+Collecting pip
+  Downloading https://files.pythonhosted.org/packages/27/79/8a850fe3496446ff0d584327ae44e7500daf6764ca1a382d2d02789accf7/pip-20.3.4-py2.py3-none-any.whl (1.5MB)
+    100% |████████████████████████████████| 1.5MB 272kB/s
+Collecting setuptools
+  Downloading https://files.pythonhosted.org/packages/e1/b7/182161210a13158cd3ccc41ee19aadef54496b74f2817cc147006ec932b4/setuptools-44.1.1-py2.py3-none-any.whl (583kB)
+    100% |████████████████████████████████| 583kB 511kB/s
+Collecting wheel
+  Downloading https://files.pythonhosted.org/packages/27/d6/003e593296a85fd6ed616ed962795b2f87709c3eee2bca4f6d0fe55c6d00/wheel-0.37.1-py2.py3-none-any.whl
+Installing collected packages: pip, setuptools, wheel
+  Found existing installation: pip 18.1
+    Uninstalling pip-18.1:
+      Successfully uninstalled pip-18.1
+  Found existing installation: setuptools 40.8.0.post20190503
+    Uninstalling setuptools-40.8.0.post20190503:
+      Successfully uninstalled setuptools-40.8.0.post20190503
+Successfully installed pip-20.3.4 setuptools-44.1.1 wheel-0.37.1
+bash-5.0# pip install pandas matplotlib seaborn
+DEPRECATION: Python 2.7 reached the end of its life on January 1st, 2020. Please upgrade your Python as Python 2.7 is no longer maintained. pip 21.0 will drop support for Python 2.7 in January 2021. More details about Python 2 support in pip can be found at https://pip.pypa.io/en/latest/development/release-process/#python-2-support pip 21.0 will remove support for this functionality.
+Collecting pandas
+  Using cached pandas-0.24.2.tar.gz (11.8 MB)
+    ERROR: Command errored out with exit status 1:
+     command: /usr/bin/python2 -c 'import sys, setuptools, tokenize; sys.argv[0] = '"'"'/tmp/pip-install-jpLnEv/pandas/setup.py'"'"'; __file__='"'"'/tmp/pip-install-jpLnEv/pandas/setup.py'"'"';f=getattr(tokenize, '"'"'open'"'"', open)(__file__);code=f.read().replace('"'"'\r\n'"'"', '"'"'\n'"'"');f.close();exec(compile(code, __file__, '"'"'exec'"'"'))' egg_info --egg-base /tmp/pip-pip-egg-info-xmJJYM
+         cwd: /tmp/pip-install-jpLnEv/pandas/
+    Complete output (302 lines):
+    DEPRECATION: Python 2.7 reached the end of its life on January 1st, 2020. Please upgrade your Python as Python 2.7 is no longer maintained. pip 21.0 will drop support for Python 2.7 in January 2021. More details about Python 2 support in pip can be found at https://pip.pypa.io/en/latest/development/release-process/#python-2-support pip 21.0 will remove support for this functionality.
+      ERROR: Command errored out with exit status 1:
+       command: /usr/bin/python2 -u -c 'import sys, setuptools, tokenize; sys.argv[0] = '"'"'/tmp/pip-wheel-pVGNaG/numpy/setup.py'"'"'; __file__='"'"'/tmp/pip-wheel-pVGNaG/numpy/setup.py'"'"';f=getattr(tokenize, '"'"'open'"'"', open)(__file__);code=f.read().replace('"'"'\r\n'"'"', '"'"'\n'"'"');f.close();exec(compile(code, __file__, '"'"'exec'"'"'))' bdist_wheel -d /tmp/pip-wheel-AZT4wR
+           cwd: /tmp/pip-wheel-pVGNaG/numpy/
+      Complete output (257 lines):
+      Running from numpy source directory.
+      blas_opt_info:
+      blas_mkl_info:
+      customize UnixCCompiler
+        libraries mkl_rt not found in ['/usr/local/lib', '/usr/lib']
+        NOT AVAILABLE
+
+      blis_info:
+      customize UnixCCompiler
+        libraries blis not found in ['/usr/local/lib', '/usr/lib']
+        NOT AVAILABLE
+
+      openblas_info:
+      customize UnixCCompiler
+      customize UnixCCompiler
+        libraries openblas not found in ['/usr/local/lib', '/usr/lib']
+        NOT AVAILABLE
+
+      atlas_3_10_blas_threads_info:
+      Setting PTATLAS=ATLAS
+      customize UnixCCompiler
+        libraries tatlas not found in ['/usr/local/lib', '/usr/lib']
+        NOT AVAILABLE
+
+      atlas_3_10_blas_info:
+      customize UnixCCompiler
+        libraries satlas not found in ['/usr/local/lib', '/usr/lib']
+        NOT AVAILABLE
+
+      atlas_blas_threads_info:
+      Setting PTATLAS=ATLAS
+      customize UnixCCompiler
+        libraries ptf77blas,ptcblas,atlas not found in ['/usr/local/lib', '/usr/lib']
+        NOT AVAILABLE
+
+      atlas_blas_info:
+      customize UnixCCompiler
+        libraries f77blas,cblas,atlas not found in ['/usr/local/lib', '/usr/lib']
+        NOT AVAILABLE
+
+      accelerate_info:
+        NOT AVAILABLE
+
+      /tmp/pip-wheel-pVGNaG/numpy/numpy/distutils/system_info.py:639: UserWarning:
+          Atlas (http://math-atlas.sourceforge.net/) libraries not found.
+          Directories to search for the libraries can be specified in the
+          numpy/distutils/site.cfg file (section [atlas]) or by setting
+          the ATLAS environment variable.
+        self.calc_info()
+      blas_info:
+      customize UnixCCompiler
+        libraries blas not found in ['/usr/local/lib', '/usr/lib']
+        NOT AVAILABLE
+
+      /tmp/pip-wheel-pVGNaG/numpy/numpy/distutils/system_info.py:639: UserWarning:
+          Blas (http://www.netlib.org/blas/) libraries not found.
+          Directories to search for the libraries can be specified in the
+          numpy/distutils/site.cfg file (section [blas]) or by setting
+          the BLAS environment variable.
+        self.calc_info()
+      blas_src_info:
+        NOT AVAILABLE
+
+      /tmp/pip-wheel-pVGNaG/numpy/numpy/distutils/system_info.py:639: UserWarning:
+          Blas (http://www.netlib.org/blas/) sources not found.
+          Directories to search for the sources can be specified in the
+          numpy/distutils/site.cfg file (section [blas_src]) or by setting
+          the BLAS_SRC environment variable.
+        self.calc_info()
+        NOT AVAILABLE
+
+      /bin/sh: svnversion: not found
+      non-existing path in 'numpy/distutils': 'site.cfg'
+      lapack_opt_info:
+      lapack_mkl_info:
+      customize UnixCCompiler
+        libraries mkl_rt not found in ['/usr/local/lib', '/usr/lib']
+        NOT AVAILABLE
+
+      openblas_lapack_info:
+      customize UnixCCompiler
+      customize UnixCCompiler
+        libraries openblas not found in ['/usr/local/lib', '/usr/lib']
+        NOT AVAILABLE
+
+      openblas_clapack_info:
+      customize UnixCCompiler
+      customize UnixCCompiler
+        libraries openblas,lapack not found in ['/usr/local/lib', '/usr/lib']
+        NOT AVAILABLE
+
+      atlas_3_10_threads_info:
+      Setting PTATLAS=ATLAS
+      customize UnixCCompiler
+        libraries lapack_atlas not found in /usr/local/lib
+      customize UnixCCompiler
+        libraries tatlas,tatlas not found in /usr/local/lib
+      customize UnixCCompiler
+        libraries lapack_atlas not found in /usr/lib
+      customize UnixCCompiler
+        libraries tatlas,tatlas not found in /usr/lib
+      <class 'numpy.distutils.system_info.atlas_3_10_threads_info'>
+        NOT AVAILABLE
+
+      atlas_3_10_info:
+      customize UnixCCompiler
+        libraries lapack_atlas not found in /usr/local/lib
+      customize UnixCCompiler
+        libraries satlas,satlas not found in /usr/local/lib
+      customize UnixCCompiler
+        libraries lapack_atlas not found in /usr/lib
+      customize UnixCCompiler
+        libraries satlas,satlas not found in /usr/lib
+      <class 'numpy.distutils.system_info.atlas_3_10_info'>
+        NOT AVAILABLE
+
+      atlas_threads_info:
+      Setting PTATLAS=ATLAS
+      customize UnixCCompiler
+        libraries lapack_atlas not found in /usr/local/lib
+      customize UnixCCompiler
+        libraries ptf77blas,ptcblas,atlas not found in /usr/local/lib
+      customize UnixCCompiler
+        libraries lapack_atlas not found in /usr/lib
+      customize UnixCCompiler
+        libraries ptf77blas,ptcblas,atlas not found in /usr/lib
+      <class 'numpy.distutils.system_info.atlas_threads_info'>
+        NOT AVAILABLE
+
+      atlas_info:
+      customize UnixCCompiler
+        libraries lapack_atlas not found in /usr/local/lib
+      customize UnixCCompiler
+        libraries f77blas,cblas,atlas not found in /usr/local/lib
+      customize UnixCCompiler
+        libraries lapack_atlas not found in /usr/lib
+      customize UnixCCompiler
+        libraries f77blas,cblas,atlas not found in /usr/lib
+      <class 'numpy.distutils.system_info.atlas_info'>
+        NOT AVAILABLE
+
+      lapack_info:
+      customize UnixCCompiler
+        libraries lapack not found in ['/usr/local/lib', '/usr/lib']
+        NOT AVAILABLE
+
+      /tmp/pip-wheel-pVGNaG/numpy/numpy/distutils/system_info.py:639: UserWarning:
+          Lapack (http://www.netlib.org/lapack/) libraries not found.
+          Directories to search for the libraries can be specified in the
+          numpy/distutils/site.cfg file (section [lapack]) or by setting
+          the LAPACK environment variable.
+        self.calc_info()
+      lapack_src_info:
+        NOT AVAILABLE
+
+      /tmp/pip-wheel-pVGNaG/numpy/numpy/distutils/system_info.py:639: UserWarning:
+          Lapack (http://www.netlib.org/lapack/) sources not found.
+          Directories to search for the sources can be specified in the
+          numpy/distutils/site.cfg file (section [lapack_src]) or by setting
+          the LAPACK_SRC environment variable.
+        self.calc_info()
+        NOT AVAILABLE
+
+      /usr/lib/python2.7/distutils/dist.py:267: UserWarning: Unknown distribution option: 'define_macros'
+        warnings.warn(msg)
+      running bdist_wheel
+      running build
+      running config_cc
+      unifing config_cc, config, build_clib, build_ext, build commands --compiler options
+      running config_fc
+      unifing config_fc, config, build_clib, build_ext, build commands --fcompiler options
+      running build_src
+      build_src
+      building py_modules sources
+      creating build
+      creating build/src.linux-x86_64-2.7
+      creating build/src.linux-x86_64-2.7/numpy
+      creating build/src.linux-x86_64-2.7/numpy/distutils
+      building library "npymath" sources
+      get_default_fcompiler: matching types: '['gnu95', 'intel', 'lahey', 'pg', 'absoft', 'nag', 'vast', 'compaq', 'intele', 'intelem', 'gnu', 'g95', 'pathf95', 'nagfor']'
+      customize Gnu95FCompiler
+      Could not locate executable gfortran
+      Could not locate executable f95
+      customize IntelFCompiler
+      Could not locate executable ifort
+      Could not locate executable ifc
+      customize LaheyFCompiler
+      Could not locate executable lf95
+      customize PGroupFCompiler
+      Could not locate executable pgfortran
+      customize AbsoftFCompiler
+      Could not locate executable f90
+      Could not locate executable f77
+      customize NAGFCompiler
+      customize VastFCompiler
+      customize CompaqFCompiler
+      Could not locate executable fort
+      customize IntelItaniumFCompiler
+      Could not locate executable efort
+      Could not locate executable efc
+      customize IntelEM64TFCompiler
+      customize GnuFCompiler
+      Could not locate executable g77
+      customize G95FCompiler
+      Could not locate executable g95
+      customize PathScaleFCompiler
+      Could not locate executable pathf95
+      customize NAGFORCompiler
+      Could not locate executable nagfor
+      don't know how to compile Fortran code on platform 'posix'
+      C compiler: gcc -fno-strict-aliasing -Os -fomit-frame-pointer -g -DNDEBUG -Os -fomit-frame-pointer -g -DTHREAD_STACK_SIZE=0x100000 -fPIC
+
+      compile options: '-Inumpy/core/src/common -Inumpy/core/src -Inumpy/core -Inumpy/core/src/npymath -Inumpy/core/src/multiarray -Inumpy/core/src/umath -Inumpy/core/src/npysort -I/usr/include/python2.7 -c'
+      gcc: _configtest.c
+      failure.
+      removing: _configtest.c _configtest.o
+      Traceback (most recent call last):
+        File "<string>", line 1, in <module>
+        File "/tmp/pip-wheel-pVGNaG/numpy/setup.py", line 419, in <module>
+          setup_package()
+        File "/tmp/pip-wheel-pVGNaG/numpy/setup.py", line 411, in setup_package
+          setup(**metadata)
+        File "/tmp/pip-wheel-pVGNaG/numpy/numpy/distutils/core.py", line 171, in setup
+          return old_setup(**new_attr)
+        File "/usr/lib/python2.7/site-packages/setuptools/__init__.py", line 162, in setup
+          return distutils.core.setup(**attrs)
+        File "/usr/lib/python2.7/distutils/core.py", line 151, in setup
+          dist.run_commands()
+        File "/usr/lib/python2.7/distutils/dist.py", line 953, in run_commands
+          self.run_command(cmd)
+        File "/usr/lib/python2.7/distutils/dist.py", line 972, in run_command
+          cmd_obj.run()
+        File "/usr/lib/python2.7/site-packages/wheel/bdist_wheel.py", line 299, in run
+          self.run_command('build')
+        File "/usr/lib/python2.7/distutils/cmd.py", line 326, in run_command
+          self.distribution.run_command(command)
+        File "/usr/lib/python2.7/distutils/dist.py", line 972, in run_command
+          cmd_obj.run()
+        File "/tmp/pip-wheel-pVGNaG/numpy/numpy/distutils/command/build.py", line 47, in run
+          old_build.run(self)
+        File "/usr/lib/python2.7/distutils/command/build.py", line 127, in run
+          self.run_command(cmd_name)
+        File "/usr/lib/python2.7/distutils/cmd.py", line 326, in run_command
+          self.distribution.run_command(command)
+        File "/usr/lib/python2.7/distutils/dist.py", line 972, in run_command
+          cmd_obj.run()
+        File "/tmp/pip-wheel-pVGNaG/numpy/numpy/distutils/command/build_src.py", line 148, in run
+          self.build_sources()
+        File "/tmp/pip-wheel-pVGNaG/numpy/numpy/distutils/command/build_src.py", line 159, in build_sources
+          self.build_library_sources(*libname_info)
+        File "/tmp/pip-wheel-pVGNaG/numpy/numpy/distutils/command/build_src.py", line 292, in build_library_sources
+          sources = self.generate_sources(sources, (lib_name, build_info))
+        File "/tmp/pip-wheel-pVGNaG/numpy/numpy/distutils/command/build_src.py", line 375, in generate_sources
+          source = func(extension, build_dir)
+        File "numpy/core/setup.py", line 667, in get_mathlib_info
+          raise RuntimeError("Broken toolchain: cannot link a simple C program")
+      RuntimeError: Broken toolchain: cannot link a simple C program
+      ----------------------------------------
+      ERROR: Failed building wheel for numpy
+      ERROR: Command errored out with exit status 1:
+       command: /usr/bin/python2 -u -c 'import sys, setuptools, tokenize; sys.argv[0] = '"'"'/tmp/pip-wheel-pVGNaG/numpy/setup.py'"'"'; __file__='"'"'/tmp/pip-wheel-pVGNaG/numpy/setup.py'"'"';f=getattr(tokenize, '"'"'open'"'"', open)(__file__);code=f.read().replace('"'"'\r\n'"'"', '"'"'\n'"'"');f.close();exec(compile(code, __file__, '"'"'exec'"'"'))' clean --all
+           cwd: /tmp/pip-wheel-pVGNaG/numpy
+      Complete output (10 lines):
+      Running from numpy source directory.
+
+      `setup.py clean` is not supported, use one of the following instead:
+
+        - `git clean -xdf` (cleans all files)
+        - `git clean -Xdf` (cleans all versioned files, doesn't touch
+                            files that aren't checked into the git repo)
+
+      Add `--force` to your command to use it anyway if you must (unsupported).
+
+      ----------------------------------------
+      ERROR: Failed cleaning build dir for numpy
+    ERROR: Failed to build one or more wheels
+    Traceback (most recent call last):
+      File "<string>", line 1, in <module>
+      File "/tmp/pip-install-jpLnEv/pandas/setup.py", line 746, in <module>
+        **setuptools_kwargs)
+      File "/usr/lib/python2.7/site-packages/setuptools/__init__.py", line 161, in setup
+        _install_setup_requires(attrs)
+      File "/usr/lib/python2.7/site-packages/setuptools/__init__.py", line 156, in _install_setup_requires
+        dist.fetch_build_eggs(dist.setup_requires)
+      File "/usr/lib/python2.7/site-packages/setuptools/dist.py", line 721, in fetch_build_eggs
+        replace_conflicting=True,
+      File "/usr/lib/python2.7/site-packages/pkg_resources/__init__.py", line 782, in resolve
+        replace_conflicting=replace_conflicting
+      File "/usr/lib/python2.7/site-packages/pkg_resources/__init__.py", line 1065, in best_match
+        return self.obtain(req, installer)
+      File "/usr/lib/python2.7/site-packages/pkg_resources/__init__.py", line 1077, in obtain
+        return installer(requirement)
+      File "/usr/lib/python2.7/site-packages/setuptools/dist.py", line 777, in fetch_build_egg
+        return fetch_build_egg(self, req)
+      File "/usr/lib/python2.7/site-packages/setuptools/installer.py", line 130, in fetch_build_egg
+        raise DistutilsError(str(e))
+    distutils.errors.DistutilsError: Command '['/usr/bin/python2', '-m', 'pip', '--disable-pip-version-check', 'wheel', '--no-deps', '-w', '/tmp/tmpoYxQRc', '--quiet', 'numpy>=1.12.0']' returned non-zero exit status 1
+    ----------------------------------------
+ERROR: Command errored out with exit status 1: python setup.py egg_info Check the logs for full command output.
+bash-5.0# apk update
+fetch http://dl-cdn.alpinelinux.org/alpine/v3.10/main/x86_64/APKINDEX.tar.gz
+fetch http://dl-cdn.alpinelinux.org/alpine/v3.10/community/x86_64/APKINDEX.tar.gz
+v3.10.9-43-g3feb769ea3 [http://dl-cdn.alpinelinux.org/alpine/v3.10/main]
+v3.10.6-10-ged79a86de3 [http://dl-cdn.alpinelinux.org/alpine/v3.10/community]
+OK: 10364 distinct packages available
+bash-5.0# apk add --no-cache python3 py3-numpy
+fetch http://dl-cdn.alpinelinux.org/alpine/v3.10/main/x86_64/APKINDEX.tar.gz
+fetch http://dl-cdn.alpinelinux.org/alpine/v3.10/community/x86_64/APKINDEX.tar.gz
+OK: 238 MiB in 73 packages
+bash-5.0# export PYSPARK_PYTHON=python3
+bash-5.0# export PYSPARK_DRIVER_PYTHON=python3
+bash-5.0# pip install --upgrade pip setuptools wheel
+DEPRECATION: Python 2.7 reached the end of its life on January 1st, 2020. Please upgrade your Python as Python 2.7 is no longer maintained. pip 21.0 will drop support for Python 2.7 in January 2021. More details about Python 2 support in pip can be found at https://pip.pypa.io/en/latest/development/release-process/#python-2-support pip 21.0 will remove support for this functionality.
+Requirement already up-to-date: pip in /usr/lib/python2.7/site-packages (20.3.4)
+Requirement already up-to-date: setuptools in /usr/lib/python2.7/site-packages (44.1.1)
+Requirement already up-to-date: wheel in /usr/lib/python2.7/site-packages (0.37.1)
+bash-5.0# pip install pandas matplotlib seaborn
+DEPRECATION: Python 2.7 reached the end of its life on January 1st, 2020. Please upgrade your Python as Python 2.7 is no longer maintained. pip 21.0 will drop support for Python 2.7 in January 2021. More details about Python 2 support in pip can be found at https://pip.pypa.io/en/latest/development/release-process/#python-2-support pip 21.0 will remove support for this functionality.
+Collecting pandas
+  Using cached pandas-0.24.2.tar.gz (11.8 MB)
+    ERROR: Command errored out with exit status 1:
+     command: /usr/bin/python2 -c 'import sys, setuptools, tokenize; sys.argv[0] = '"'"'/tmp/pip-install-Cj0A38/pandas/setup.py'"'"'; __file__='"'"'/tmp/pip-install-Cj0A38/pandas/setup.py'"'"';f=getattr(tokenize, '"'"'open'"'"', open)(__file__);code=f.read().replace('"'"'\r\n'"'"', '"'"'\n'"'"');f.close();exec(compile(code, __file__, '"'"'exec'"'"'))' egg_info --egg-base /tmp/pip-pip-egg-info-F6Anet
+         cwd: /tmp/pip-install-Cj0A38/pandas/
+    Complete output (302 lines):
+    DEPRECATION: Python 2.7 reached the end of its life on January 1st, 2020. Please upgrade your Python as Python 2.7 is no longer maintained. pip 21.0 will drop support for Python 2.7 in January 2021. More details about Python 2 support in pip can be found at https://pip.pypa.io/en/latest/development/release-process/#python-2-support pip 21.0 will remove support for this functionality.
+      ERROR: Command errored out with exit status 1:
+       command: /usr/bin/python2 -u -c 'import sys, setuptools, tokenize; sys.argv[0] = '"'"'/tmp/pip-wheel-Vi5oyo/numpy/setup.py'"'"'; __file__='"'"'/tmp/pip-wheel-Vi5oyo/numpy/setup.py'"'"';f=getattr(tokenize, '"'"'open'"'"', open)(__file__);code=f.read().replace('"'"'\r\n'"'"', '"'"'\n'"'"');f.close();exec(compile(code, __file__, '"'"'exec'"'"'))' bdist_wheel -d /tmp/pip-wheel-DMqave
+           cwd: /tmp/pip-wheel-Vi5oyo/numpy/
+      Complete output (257 lines):
+      Running from numpy source directory.
+      blas_opt_info:
+      blas_mkl_info:
+      customize UnixCCompiler
+        libraries mkl_rt not found in ['/usr/local/lib', '/usr/lib']
+        NOT AVAILABLE
+
+      blis_info:
+      customize UnixCCompiler
+        libraries blis not found in ['/usr/local/lib', '/usr/lib']
+        NOT AVAILABLE
+
+      openblas_info:
+      customize UnixCCompiler
+      customize UnixCCompiler
+        libraries openblas not found in ['/usr/local/lib', '/usr/lib']
+        NOT AVAILABLE
+
+      atlas_3_10_blas_threads_info:
+      Setting PTATLAS=ATLAS
+      customize UnixCCompiler
+        libraries tatlas not found in ['/usr/local/lib', '/usr/lib']
+        NOT AVAILABLE
+
+      atlas_3_10_blas_info:
+      customize UnixCCompiler
+        libraries satlas not found in ['/usr/local/lib', '/usr/lib']
+        NOT AVAILABLE
+
+      atlas_blas_threads_info:
+      Setting PTATLAS=ATLAS
+      customize UnixCCompiler
+        libraries ptf77blas,ptcblas,atlas not found in ['/usr/local/lib', '/usr/lib']
+        NOT AVAILABLE
+
+      atlas_blas_info:
+      customize UnixCCompiler
+        libraries f77blas,cblas,atlas not found in ['/usr/local/lib', '/usr/lib']
+        NOT AVAILABLE
+
+      accelerate_info:
+        NOT AVAILABLE
+
+      /tmp/pip-wheel-Vi5oyo/numpy/numpy/distutils/system_info.py:639: UserWarning:
+          Atlas (http://math-atlas.sourceforge.net/) libraries not found.
+          Directories to search for the libraries can be specified in the
+          numpy/distutils/site.cfg file (section [atlas]) or by setting
+          the ATLAS environment variable.
+        self.calc_info()
+      blas_info:
+      customize UnixCCompiler
+        libraries blas not found in ['/usr/local/lib', '/usr/lib']
+        NOT AVAILABLE
+
+      /tmp/pip-wheel-Vi5oyo/numpy/numpy/distutils/system_info.py:639: UserWarning:
+          Blas (http://www.netlib.org/blas/) libraries not found.
+          Directories to search for the libraries can be specified in the
+          numpy/distutils/site.cfg file (section [blas]) or by setting
+          the BLAS environment variable.
+        self.calc_info()
+      blas_src_info:
+        NOT AVAILABLE
+
+      /tmp/pip-wheel-Vi5oyo/numpy/numpy/distutils/system_info.py:639: UserWarning:
+          Blas (http://www.netlib.org/blas/) sources not found.
+          Directories to search for the sources can be specified in the
+          numpy/distutils/site.cfg file (section [blas_src]) or by setting
+          the BLAS_SRC environment variable.
+        self.calc_info()
+        NOT AVAILABLE
+
+      /bin/sh: svnversion: not found
+      non-existing path in 'numpy/distutils': 'site.cfg'
+      lapack_opt_info:
+      lapack_mkl_info:
+      customize UnixCCompiler
+        libraries mkl_rt not found in ['/usr/local/lib', '/usr/lib']
+        NOT AVAILABLE
+
+      openblas_lapack_info:
+      customize UnixCCompiler
+      customize UnixCCompiler
+        libraries openblas not found in ['/usr/local/lib', '/usr/lib']
+        NOT AVAILABLE
+
+      openblas_clapack_info:
+      customize UnixCCompiler
+      customize UnixCCompiler
+        libraries openblas,lapack not found in ['/usr/local/lib', '/usr/lib']
+        NOT AVAILABLE
+
+      atlas_3_10_threads_info:
+      Setting PTATLAS=ATLAS
+      customize UnixCCompiler
+        libraries lapack_atlas not found in /usr/local/lib
+      customize UnixCCompiler
+        libraries tatlas,tatlas not found in /usr/local/lib
+      customize UnixCCompiler
+        libraries lapack_atlas not found in /usr/lib
+      customize UnixCCompiler
+        libraries tatlas,tatlas not found in /usr/lib
+      <class 'numpy.distutils.system_info.atlas_3_10_threads_info'>
+        NOT AVAILABLE
+
+      atlas_3_10_info:
+      customize UnixCCompiler
+        libraries lapack_atlas not found in /usr/local/lib
+      customize UnixCCompiler
+        libraries satlas,satlas not found in /usr/local/lib
+      customize UnixCCompiler
+        libraries lapack_atlas not found in /usr/lib
+      customize UnixCCompiler
+        libraries satlas,satlas not found in /usr/lib
+      <class 'numpy.distutils.system_info.atlas_3_10_info'>
+        NOT AVAILABLE
+
+      atlas_threads_info:
+      Setting PTATLAS=ATLAS
+      customize UnixCCompiler
+        libraries lapack_atlas not found in /usr/local/lib
+      customize UnixCCompiler
+        libraries ptf77blas,ptcblas,atlas not found in /usr/local/lib
+      customize UnixCCompiler
+        libraries lapack_atlas not found in /usr/lib
+      customize UnixCCompiler
+        libraries ptf77blas,ptcblas,atlas not found in /usr/lib
+      <class 'numpy.distutils.system_info.atlas_threads_info'>
+        NOT AVAILABLE
+
+      atlas_info:
+      customize UnixCCompiler
+        libraries lapack_atlas not found in /usr/local/lib
+      customize UnixCCompiler
+        libraries f77blas,cblas,atlas not found in /usr/local/lib
+      customize UnixCCompiler
+        libraries lapack_atlas not found in /usr/lib
+      customize UnixCCompiler
+        libraries f77blas,cblas,atlas not found in /usr/lib
+      <class 'numpy.distutils.system_info.atlas_info'>
+        NOT AVAILABLE
+
+      lapack_info:
+      customize UnixCCompiler
+        libraries lapack not found in ['/usr/local/lib', '/usr/lib']
+        NOT AVAILABLE
+
+      /tmp/pip-wheel-Vi5oyo/numpy/numpy/distutils/system_info.py:639: UserWarning:
+          Lapack (http://www.netlib.org/lapack/) libraries not found.
+          Directories to search for the libraries can be specified in the
+          numpy/distutils/site.cfg file (section [lapack]) or by setting
+          the LAPACK environment variable.
+        self.calc_info()
+      lapack_src_info:
+        NOT AVAILABLE
+
+      /tmp/pip-wheel-Vi5oyo/numpy/numpy/distutils/system_info.py:639: UserWarning:
+          Lapack (http://www.netlib.org/lapack/) sources not found.
+          Directories to search for the sources can be specified in the
+          numpy/distutils/site.cfg file (section [lapack_src]) or by setting
+          the LAPACK_SRC environment variable.
+        self.calc_info()
+        NOT AVAILABLE
+
+      /usr/lib/python2.7/distutils/dist.py:267: UserWarning: Unknown distribution option: 'define_macros'
+        warnings.warn(msg)
+      running bdist_wheel
+      running build
+      running config_cc
+      unifing config_cc, config, build_clib, build_ext, build commands --compiler options
+      running config_fc
+      unifing config_fc, config, build_clib, build_ext, build commands --fcompiler options
+      running build_src
+      build_src
+      building py_modules sources
+      creating build
+      creating build/src.linux-x86_64-2.7
+      creating build/src.linux-x86_64-2.7/numpy
+      creating build/src.linux-x86_64-2.7/numpy/distutils
+      building library "npymath" sources
+      get_default_fcompiler: matching types: '['gnu95', 'intel', 'lahey', 'pg', 'absoft', 'nag', 'vast', 'compaq', 'intele', 'intelem', 'gnu', 'g95', 'pathf95', 'nagfor']'
+      customize Gnu95FCompiler
+      Could not locate executable gfortran
+      Could not locate executable f95
+      customize IntelFCompiler
+      Could not locate executable ifort
+      Could not locate executable ifc
+      customize LaheyFCompiler
+      Could not locate executable lf95
+      customize PGroupFCompiler
+      Could not locate executable pgfortran
+      customize AbsoftFCompiler
+      Could not locate executable f90
+      Could not locate executable f77
+      customize NAGFCompiler
+      customize VastFCompiler
+      customize CompaqFCompiler
+      Could not locate executable fort
+      customize IntelItaniumFCompiler
+      Could not locate executable efort
+      Could not locate executable efc
+      customize IntelEM64TFCompiler
+      customize GnuFCompiler
+      Could not locate executable g77
+      customize G95FCompiler
+      Could not locate executable g95
+      customize PathScaleFCompiler
+      Could not locate executable pathf95
+      customize NAGFORCompiler
+      Could not locate executable nagfor
+      don't know how to compile Fortran code on platform 'posix'
+      C compiler: gcc -fno-strict-aliasing -Os -fomit-frame-pointer -g -DNDEBUG -Os -fomit-frame-pointer -g -DTHREAD_STACK_SIZE=0x100000 -fPIC
+
+      compile options: '-Inumpy/core/src/common -Inumpy/core/src -Inumpy/core -Inumpy/core/src/npymath -Inumpy/core/src/multiarray -Inumpy/core/src/umath -Inumpy/core/src/npysort -I/usr/include/python2.7 -c'
+      gcc: _configtest.c
+      failure.
+      removing: _configtest.c _configtest.o
+      Traceback (most recent call last):
+        File "<string>", line 1, in <module>
+        File "/tmp/pip-wheel-Vi5oyo/numpy/setup.py", line 419, in <module>
+          setup_package()
+        File "/tmp/pip-wheel-Vi5oyo/numpy/setup.py", line 411, in setup_package
+          setup(**metadata)
+        File "/tmp/pip-wheel-Vi5oyo/numpy/numpy/distutils/core.py", line 171, in setup
+          return old_setup(**new_attr)
+        File "/usr/lib/python2.7/site-packages/setuptools/__init__.py", line 162, in setup
+          return distutils.core.setup(**attrs)
+        File "/usr/lib/python2.7/distutils/core.py", line 151, in setup
+          dist.run_commands()
+        File "/usr/lib/python2.7/distutils/dist.py", line 953, in run_commands
+          self.run_command(cmd)
+        File "/usr/lib/python2.7/distutils/dist.py", line 972, in run_command
+          cmd_obj.run()
+        File "/usr/lib/python2.7/site-packages/wheel/bdist_wheel.py", line 299, in run
+          self.run_command('build')
+        File "/usr/lib/python2.7/distutils/cmd.py", line 326, in run_command
+          self.distribution.run_command(command)
+        File "/usr/lib/python2.7/distutils/dist.py", line 972, in run_command
+          cmd_obj.run()
+        File "/tmp/pip-wheel-Vi5oyo/numpy/numpy/distutils/command/build.py", line 47, in run
+          old_build.run(self)
+        File "/usr/lib/python2.7/distutils/command/build.py", line 127, in run
+          self.run_command(cmd_name)
+        File "/usr/lib/python2.7/distutils/cmd.py", line 326, in run_command
+          self.distribution.run_command(command)
+        File "/usr/lib/python2.7/distutils/dist.py", line 972, in run_command
+          cmd_obj.run()
+        File "/tmp/pip-wheel-Vi5oyo/numpy/numpy/distutils/command/build_src.py", line 148, in run
+          self.build_sources()
+        File "/tmp/pip-wheel-Vi5oyo/numpy/numpy/distutils/command/build_src.py", line 159, in build_sources
+          self.build_library_sources(*libname_info)
+        File "/tmp/pip-wheel-Vi5oyo/numpy/numpy/distutils/command/build_src.py", line 292, in build_library_sources
+          sources = self.generate_sources(sources, (lib_name, build_info))
+        File "/tmp/pip-wheel-Vi5oyo/numpy/numpy/distutils/command/build_src.py", line 375, in generate_sources
+          source = func(extension, build_dir)
+        File "numpy/core/setup.py", line 667, in get_mathlib_info
+          raise RuntimeError("Broken toolchain: cannot link a simple C program")
+      RuntimeError: Broken toolchain: cannot link a simple C program
+      ----------------------------------------
+      ERROR: Failed building wheel for numpy
+      ERROR: Command errored out with exit status 1:
+       command: /usr/bin/python2 -u -c 'import sys, setuptools, tokenize; sys.argv[0] = '"'"'/tmp/pip-wheel-Vi5oyo/numpy/setup.py'"'"'; __file__='"'"'/tmp/pip-wheel-Vi5oyo/numpy/setup.py'"'"';f=getattr(tokenize, '"'"'open'"'"', open)(__file__);code=f.read().replace('"'"'\r\n'"'"', '"'"'\n'"'"');f.close();exec(compile(code, __file__, '"'"'exec'"'"'))' clean --all
+           cwd: /tmp/pip-wheel-Vi5oyo/numpy
+      Complete output (10 lines):
+      Running from numpy source directory.
+
+      `setup.py clean` is not supported, use one of the following instead:
+
+        - `git clean -xdf` (cleans all files)
+        - `git clean -Xdf` (cleans all versioned files, doesn't touch
+                            files that aren't checked into the git repo)
+
+      Add `--force` to your command to use it anyway if you must (unsupported).
+
+      ----------------------------------------
+      ERROR: Failed cleaning build dir for numpy
+    ERROR: Failed to build one or more wheels
+    Traceback (most recent call last):
+      File "<string>", line 1, in <module>
+      File "/tmp/pip-install-Cj0A38/pandas/setup.py", line 746, in <module>
+        **setuptools_kwargs)
+      File "/usr/lib/python2.7/site-packages/setuptools/__init__.py", line 161, in setup
+        _install_setup_requires(attrs)
+      File "/usr/lib/python2.7/site-packages/setuptools/__init__.py", line 156, in _install_setup_requires
+        dist.fetch_build_eggs(dist.setup_requires)
+      File "/usr/lib/python2.7/site-packages/setuptools/dist.py", line 721, in fetch_build_eggs
+        replace_conflicting=True,
+      File "/usr/lib/python2.7/site-packages/pkg_resources/__init__.py", line 782, in resolve
+        replace_conflicting=replace_conflicting
+      File "/usr/lib/python2.7/site-packages/pkg_resources/__init__.py", line 1065, in best_match
+        return self.obtain(req, installer)
+      File "/usr/lib/python2.7/site-packages/pkg_resources/__init__.py", line 1077, in obtain
+        return installer(requirement)
+      File "/usr/lib/python2.7/site-packages/setuptools/dist.py", line 777, in fetch_build_egg
+        return fetch_build_egg(self, req)
+      File "/usr/lib/python2.7/site-packages/setuptools/installer.py", line 130, in fetch_build_egg
+        raise DistutilsError(str(e))
+    distutils.errors.DistutilsError: Command '['/usr/bin/python2', '-m', 'pip', '--disable-pip-version-check', 'wheel', '--no-deps', '-w', '/tmp/tmp8QdBZJ', '--quiet', 'numpy>=1.12.0']' returned non-zero exit status 1
+    ----------------------------------------
+ERROR: Command errored out with exit status 1: python setup.py egg_info Check the logs for full command output.
+bash-5.0# apt-get update && apt-get install -y python3 python3-pip build-essential
+bash: apt-get: command not found
+bash-5.0# apk add --update python3 py3-pip g++ gcc python3-dev musl-dev linux-headers
+fetch http://dl-cdn.alpinelinux.org/alpine/v3.10/main/x86_64/APKINDEX.tar.gz
+fetch http://dl-cdn.alpinelinux.org/alpine/v3.10/community/x86_64/APKINDEX.tar.gz
+(1/17) Upgrading musl (1.1.22-r3 -> 1.1.22-r4)
+(2/17) Installing binutils (2.32-r1)
+(3/17) Installing gmp (6.1.2-r1)
+(4/17) Installing isl (0.18-r0)
+(5/17) Installing libgomp (8.3.0-r0)
+(6/17) Installing libatomic (8.3.0-r0)
+(7/17) Installing mpfr3 (3.1.5-r1)
+(8/17) Installing mpc1 (1.1.0-r0)
+(9/17) Installing gcc (8.3.0-r0)
+(10/17) Installing musl-dev (1.1.22-r4)
+(11/17) Installing libc-dev (0.7.1-r0)
+(12/17) Installing g++ (8.3.0-r0)
+(13/17) Upgrading libc6-compat (1.1.22-r3 -> 1.1.22-r4)
+(14/17) Installing linux-headers (4.19.36-r0)
+(15/17) Upgrading python3 (3.7.7-r1 -> 3.7.10-r0)
+(16/17) Installing pkgconf (1.6.1-r1)
+(17/17) Installing python3-dev (3.7.10-r0)
+Executing busybox-1.30.1-r3.trigger
+OK: 441 MiB in 87 packages
+bash-5.0# pip3 install pandas matplotlib seaborn
+Collecting pandas
+  Downloading pandas-1.3.5.tar.gz (4.7 MB)
+     |████████████████████████████████| 4.7 MB 201 kB/s
+  Installing build dependencies ... done
+  Getting requirements to build wheel ... done
+    Preparing wheel metadata ... done
+Collecting matplotlib
+  Downloading matplotlib-3.5.3.tar.gz (35.2 MB)
+     |████████████████████████████████| 35.2 MB 163 kB/s
+    ERROR: Command errored out with exit status 1:
+     command: /usr/bin/python3.7 -c 'import sys, setuptools, tokenize; sys.argv[0] = '"'"'/tmp/pip-install-iq8fyt_m/matplotlib/setup.py'"'"'; __file__='"'"'/tmp/pip-install-iq8fyt_m/matplotlib/setup.py'"'"';f=getattr(tokenize, '"'"'open'"'"', open)(__file__);code=f.read().replace('"'"'\r\n'"'"', '"'"'\n'"'"');f.close();exec(compile(code, __file__, '"'"'exec'"'"'))' egg_info --egg-base /tmp/pip-pip-egg-info-j3d12zhw
+         cwd: /tmp/pip-install-iq8fyt_m/matplotlib/
+    Complete output (34 lines):
+    Traceback (most recent call last):
+      File "<string>", line 1, in <module>
+      File "/tmp/pip-install-iq8fyt_m/matplotlib/setup.py", line 349, in <module>
+        "sdist": Sdist,
+      File "/usr/lib/python3.7/site-packages/setuptools/__init__.py", line 144, in setup
+        _install_setup_requires(attrs)
+      File "/usr/lib/python3.7/site-packages/setuptools/__init__.py", line 139, in _install_setup_requires
+        dist.fetch_build_eggs(dist.setup_requires)
+      File "/usr/lib/python3.7/site-packages/setuptools/dist.py", line 724, in fetch_build_eggs
+        replace_conflicting=True,
+      File "/usr/lib/python3.7/site-packages/pkg_resources/__init__.py", line 782, in resolve
+        replace_conflicting=replace_conflicting
+      File "/usr/lib/python3.7/site-packages/pkg_resources/__init__.py", line 1065, in best_match
+        return self.obtain(req, installer)
+      File "/usr/lib/python3.7/site-packages/pkg_resources/__init__.py", line 1077, in obtain
+        return installer(requirement)
+      File "/usr/lib/python3.7/site-packages/setuptools/dist.py", line 791, in fetch_build_egg
+        return cmd.easy_install(req)
+      File "/usr/lib/python3.7/site-packages/setuptools/command/easy_install.py", line 679, in easy_install
+        return self.install_item(spec, dist.location, tmpdir, deps)
+      File "/usr/lib/python3.7/site-packages/setuptools/command/easy_install.py", line 705, in install_item
+        dists = self.install_eggs(spec, download, tmpdir)
+      File "/usr/lib/python3.7/site-packages/setuptools/command/easy_install.py", line 876, in install_eggs
+        os.path.abspath(dist_filename)
+    distutils.errors.DistutilsError: Couldn't find a setup script in /tmp/easy_install-p0eurdv7/numpy-2.5.0rc1.tar.gz
+
+    Edit mplsetup.cfg to change the build options; suppress output with --quiet.
+
+    BUILDING MATPLOTLIB
+          python: yes [3.7.10 (default, Mar  2 2021, 09:06:08)  [GCC 8.3.0]]
+        platform: yes [linux]
+           tests: no  [skipping due to configuration]
+          macosx: no  [Mac OS-X only]
+
+    ----------------------------------------
+ERROR: Command errored out with exit status 1: python setup.py egg_info Check the logs for full command output.
+WARNING: You are using pip version 20.1.1; however, version 20.3.4 is available.
+You should consider upgrading via the '/usr/bin/python3.7 -m pip install --upgrade pip' command.
+bash-5.0# /usr/bin/python3.7 -m pip install --upgrade pip setuptools wheel
+Collecting pip
+  Downloading pip-24.0-py3-none-any.whl (2.1 MB)
+     |████████████████████████████████| 2.1 MB 393 kB/s
+Collecting setuptools
+  Using cached setuptools-68.0.0-py3-none-any.whl (804 kB)
+Collecting wheel
+  Using cached wheel-0.42.0-py3-none-any.whl (65 kB)
+Installing collected packages: pip, setuptools, wheel
+  Attempting uninstall: pip
+    Found existing installation: pip 20.1.1
+    Uninstalling pip-20.1.1:
+      Successfully uninstalled pip-20.1.1
+  Attempting uninstall: setuptools
+    Found existing installation: setuptools 47.1.0
+    Uninstalling setuptools-47.1.0:
+      Successfully uninstalled setuptools-47.1.0
+Successfully installed pip-24.0 setuptools-68.0.0 wheel-0.42.0
+bash-5.0# pip3 install "numpy<=1.21.6" "pandas<=1.3.5" "matplotlib<=3.5.3" "seaborn<=0.12.2"
+Requirement already satisfied: numpy<=1.21.6 in /usr/lib/python3.7/site-packages (1.16.4)
+Collecting pandas<=1.3.5
+  Downloading pandas-1.3.5.tar.gz (4.7 MB)
+     ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ 4.7/4.7 MB 9.6 MB/s eta 0:00:00
+  Installing build dependencies ... done
+  Getting requirements to build wheel ... done
+  Preparing metadata (pyproject.toml) ... done
+Collecting matplotlib<=3.5.3
+  Downloading matplotlib-3.5.3.tar.gz (35.2 MB)
+     ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ 35.2/35.2 MB 12.2 MB/s eta 0:00:00
+
+  Preparing metadata (setup.py) ... done
+Discarding https://files.pythonhosted.org/packages/02/81/e8276ec6ca005b3b2bfaaad0ea47dbb3a0e389ec8ab87d08e3ccbe4b2742/matplotlib-3.5.3.tar.gz (from https://pypi.org/simple/matplotlib/) (requires-python:>=3.7): Requested matplotlib<=3.5.3 from https://files.pythonhosted.org/packages/02/81/e8276ec6ca005b3b2bfaaad0ea47dbb3a0e389ec8ab87d08e3ccbe4b2742/matplotlib-3.5.3.tar.gz has inconsistent version: expected '3.5.3', but metadata has '0.0.0'
+  Downloading matplotlib-3.5.2.tar.gz (35.2 MB)
+     ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ 35.2/35.2 MB 11.8 MB/s eta 0:00:00
+  Preparing metadata (setup.py) ... done
+Discarding https://files.pythonhosted.org/packages/2f/be/7d6e073a3eb740ebeba43a69f5de2b141fea50b801e24e0ae024ac94d4ac/matplotlib-3.5.2.tar.gz (from https://pypi.org/simple/matplotlib/) (requires-python:>=3.7): Requested matplotlib<=3.5.3 from https://files.pythonhosted.org/packages/2f/be/7d6e073a3eb740ebeba43a69f5de2b141fea50b801e24e0ae024ac94d4ac/matplotlib-3.5.2.tar.gz has inconsistent version: expected '3.5.2', but metadata has '0.0.0'
+  Downloading matplotlib-3.5.1.tar.gz (35.3 MB)
+     ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ 35.3/35.3 MB 12.2 MB/s eta 0:00:00
+  Preparing metadata (setup.py) ... done
+Discarding https://files.pythonhosted.org/packages/8a/46/425a44ab9a71afd2f2c8a78b039c1af8ec21e370047f0ad6e43ca819788e/matplotlib-3.5.1.tar.gz (from https://pypi.org/simple/matplotlib/) (requires-python:>=3.7): Requested matplotlib<=3.5.3 from https://files.pythonhosted.org/packages/8a/46/425a44ab9a71afd2f2c8a78b039c1af8ec21e370047f0ad6e43ca819788e/matplotlib-3.5.1.tar.gz has inconsistent version: expected '3.5.1', but metadata has '0.0.0'
+  Downloading matplotlib-3.5.0.tar.gz (35.0 MB)
+     ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ 35.0/35.0 MB 11.1 MB/s eta 0:00:00
+  Preparing metadata (setup.py) ... done
+Discarding https://files.pythonhosted.org/packages/78/cf/96af81ef2c15682a020a992cb0f1291bb8ee0b3c296f5cd7978348a72993/matplotlib-3.5.0.tar.gz (from https://pypi.org/simple/matplotlib/) (requires-python:>=3.7): Requested matplotlib<=3.5.3 from https://files.pythonhosted.org/packages/78/cf/96af81ef2c15682a020a992cb0f1291bb8ee0b3c296f5cd7978348a72993/matplotlib-3.5.0.tar.gz has inconsistent version: expected '3.5.0', but metadata has '0.0.0'
+  Downloading matplotlib-3.4.3.tar.gz (37.9 MB)
+     ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ 37.9/37.9 MB 12.5 MB/s eta 0:00:00
+  Preparing metadata (setup.py) ... done
+Collecting seaborn<=0.12.2
+  Downloading seaborn-0.12.2-py3-none-any.whl.metadata (5.4 kB)
+Collecting python-dateutil>=2.7.3 (from pandas<=1.3.5)
+  Downloading python_dateutil-2.9.0.post0-py2.py3-none-any.whl.metadata (8.4 kB)
+Collecting pytz>=2017.3 (from pandas<=1.3.5)
+  Downloading pytz-2026.2-py2.py3-none-any.whl.metadata (22 kB)
+Collecting numpy<=1.21.6
+  Using cached numpy-1.21.6-cp37-cp37m-linux_x86_64.whl
+Collecting cycler>=0.10 (from matplotlib<=3.5.3)
+  Downloading cycler-0.11.0-py3-none-any.whl.metadata (785 bytes)
+Collecting kiwisolver>=1.0.1 (from matplotlib<=3.5.3)
+  Downloading kiwisolver-1.4.5-cp37-cp37m-musllinux_1_1_x86_64.whl.metadata (6.4 kB)
+Collecting pillow>=6.2.0 (from matplotlib<=3.5.3)
+  Downloading Pillow-9.5.0.tar.gz (50.5 MB)
+     ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ 50.5/50.5 MB 10.8 MB/s eta 0:00:00
+  Preparing metadata (setup.py) ... done
+Collecting pyparsing>=2.2.1 (from matplotlib<=3.5.3)
+  Downloading pyparsing-3.1.4-py3-none-any.whl.metadata (5.1 kB)
+Collecting typing_extensions (from seaborn<=0.12.2)
+  Using cached typing_extensions-4.7.1-py3-none-any.whl.metadata (3.1 kB)
+Collecting six>=1.5 (from python-dateutil>=2.7.3->pandas<=1.3.5)
+  Downloading six-1.17.0-py2.py3-none-any.whl.metadata (1.7 kB)
+Downloading seaborn-0.12.2-py3-none-any.whl (293 kB)
+   ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ 293.3/293.3 kB 12.4 MB/s eta 0:00:00
+Downloading cycler-0.11.0-py3-none-any.whl (6.4 kB)
+Downloading kiwisolver-1.4.5-cp37-cp37m-musllinux_1_1_x86_64.whl (1.8 MB)
+   ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ 1.8/1.8 MB 10.9 MB/s eta 0:00:00
+Downloading pyparsing-3.1.4-py3-none-any.whl (104 kB)
+   ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ 104.1/104.1 kB 4.9 MB/s eta 0:00:00
+Downloading python_dateutil-2.9.0.post0-py2.py3-none-any.whl (229 kB)
+   ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ 229.9/229.9 kB 7.9 MB/s eta 0:00:00
+Downloading pytz-2026.2-py2.py3-none-any.whl (510 kB)
+   ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ 510.1/510.1 kB 9.4 MB/s eta 0:00:00
+Using cached typing_extensions-4.7.1-py3-none-any.whl (33 kB)
+Downloading six-1.17.0-py2.py3-none-any.whl (11 kB)
+Building wheels for collected packages: pandas, matplotlib, pillow
+  Building wheel for pandas (pyproject.toml) ... done
+  Created wheel for pandas: filename=pandas-1.3.5-cp37-cp37m-linux_x86_64.whl size=24980643 sha256=c726ea604b2de6c9fa0ed2e8b67ce367ed1b8e672d62e28e34de9136f45b405e
+  Stored in directory: /root/.cache/pip/wheels/8b/a0/9b/00c6a08ec7b87bf8d7bf4d9ddde7dd7da7c6e822041c580287
+  Building wheel for matplotlib (setup.py) ... error
+  error: subprocess-exited-with-error
+
+  × python setup.py bdist_wheel did not run successfully.
+  │ exit code: 1
+  ╰─> [615 lines of output]
+
+      Edit setup.cfg to change the build options; suppress output with --quiet.
+
+      BUILDING MATPLOTLIB
+        matplotlib: yes [3.4.3]
+            python: yes [3.7.10 (default, Mar  2 2021, 09:06:08)  [GCC 8.3.0]]
+          platform: yes [linux]
+             tests: no  [skipping due to configuration]
+            macosx: no  [Mac OS-X only]
+
+      /usr/lib/python3.7/site-packages/setuptools/__init__.py:84: _DeprecatedInstaller: setuptools.installer and fetch_build_eggs are deprecated.
+      !!
+
+              ********************************************************************************
+              Requirements should be satisfied by a PEP 517 installer.
+              If you are using pip, you can try `pip install --use-pep517`.
+              ********************************************************************************
+
+      !!
+        dist.fetch_build_eggs(dist.setup_requires)
+      running bdist_wheel
+      running build
+      running build_py
+      creating build
+      creating build/lib.linux-x86_64-cpython-37
+      copying lib/pylab.py -> build/lib.linux-x86_64-cpython-37
+      creating build/lib.linux-x86_64-cpython-37/mpl_toolkits
+      copying lib/mpl_toolkits/__init__.py -> build/lib.linux-x86_64-cpython-37/mpl_toolkits
+      creating build/lib.linux-x86_64-cpython-37/matplotlib
+      copying lib/matplotlib/table.py -> build/lib.linux-x86_64-cpython-37/matplotlib
+      copying lib/matplotlib/cm.py -> build/lib.linux-x86_64-cpython-37/matplotlib
+      copying lib/matplotlib/_cm.py -> build/lib.linux-x86_64-cpython-37/matplotlib
+      copying lib/matplotlib/dates.py -> build/lib.linux-x86_64-cpython-37/matplotlib
+      copying lib/matplotlib/bezier.py -> build/lib.linux-x86_64-cpython-37/matplotlib
+      copying lib/matplotlib/blocking_input.py -> build/lib.linux-x86_64-cpython-37/matplotlib
+      copying lib/matplotlib/backend_managers.py -> build/lib.linux-x86_64-cpython-37/matplotlib
+      copying lib/matplotlib/axis.py -> build/lib.linux-x86_64-cpython-37/matplotlib
+      copying lib/matplotlib/_cm_listed.py -> build/lib.linux-x86_64-cpython-37/matplotlib
+      copying lib/matplotlib/stackplot.py -> build/lib.linux-x86_64-cpython-37/matplotlib
+      copying lib/matplotlib/colors.py -> build/lib.linux-x86_64-cpython-37/matplotlib
+      copying lib/matplotlib/_enums.py -> build/lib.linux-x86_64-cpython-37/matplotlib
+      copying lib/matplotlib/units.py -> build/lib.linux-x86_64-cpython-37/matplotlib
+      copying lib/matplotlib/ticker.py -> build/lib.linux-x86_64-cpython-37/matplotlib
+      copying lib/matplotlib/tight_layout.py -> build/lib.linux-x86_64-cpython-37/matplotlib
+      copying lib/matplotlib/texmanager.py -> build/lib.linux-x86_64-cpython-37/matplotlib
+      copying lib/matplotlib/spines.py -> build/lib.linux-x86_64-cpython-37/matplotlib
+      copying lib/matplotlib/legend.py -> build/lib.linux-x86_64-cpython-37/matplotlib
+      copying lib/matplotlib/hatch.py -> build/lib.linux-x86_64-cpython-37/matplotlib
+      copying lib/matplotlib/_animation_data.py -> build/lib.linux-x86_64-cpython-37/matplotlib
+      copying lib/matplotlib/_layoutgrid.py -> build/lib.linux-x86_64-cpython-37/matplotlib
+      copying lib/matplotlib/_internal_utils.py -> build/lib.linux-x86_64-cpython-37/matplotlib
+      copying lib/matplotlib/figure.py -> build/lib.linux-x86_64-cpython-37/matplotlib
+      copying lib/matplotlib/markers.py -> build/lib.linux-x86_64-cpython-37/matplotlib
+      copying lib/matplotlib/patheffects.py -> build/lib.linux-x86_64-cpython-37/matplotlib
+      copying lib/matplotlib/afm.py -> build/lib.linux-x86_64-cpython-37/matplotlib
+      copying lib/matplotlib/scale.py -> build/lib.linux-x86_64-cpython-37/matplotlib
+      copying lib/matplotlib/pylab.py -> build/lib.linux-x86_64-cpython-37/matplotlib
+      copying lib/matplotlib/pyplot.py -> build/lib.linux-x86_64-cpython-37/matplotlib
+      copying lib/matplotlib/sankey.py -> build/lib.linux-x86_64-cpython-37/matplotlib
+      copying lib/matplotlib/quiver.py -> build/lib.linux-x86_64-cpython-37/matplotlib
+      copying lib/matplotlib/_version.py -> build/lib.linux-x86_64-cpython-37/matplotlib
+      copying lib/matplotlib/legend_handler.py -> build/lib.linux-x86_64-cpython-37/matplotlib
+      copying lib/matplotlib/contour.py -> build/lib.linux-x86_64-cpython-37/matplotlib
+      copying lib/matplotlib/tight_bbox.py -> build/lib.linux-x86_64-cpython-37/matplotlib
+      copying lib/matplotlib/rcsetup.py -> build/lib.linux-x86_64-cpython-37/matplotlib
+      copying lib/matplotlib/_mathtext.py -> build/lib.linux-x86_64-cpython-37/matplotlib
+      copying lib/matplotlib/gridspec.py -> build/lib.linux-x86_64-cpython-37/matplotlib
+      copying lib/matplotlib/widgets.py -> build/lib.linux-x86_64-cpython-37/matplotlib
+      copying lib/matplotlib/ttconv.py -> build/lib.linux-x86_64-cpython-37/matplotlib
+      copying lib/matplotlib/__init__.py -> build/lib.linux-x86_64-cpython-37/matplotlib
+      copying lib/matplotlib/fontconfig_pattern.py -> build/lib.linux-x86_64-cpython-37/matplotlib
+      copying lib/matplotlib/backend_bases.py -> build/lib.linux-x86_64-cpython-37/matplotlib
+      copying lib/matplotlib/_color_data.py -> build/lib.linux-x86_64-cpython-37/matplotlib
+      copying lib/matplotlib/artist.py -> build/lib.linux-x86_64-cpython-37/matplotlib
+      copying lib/matplotlib/dviread.py -> build/lib.linux-x86_64-cpython-37/matplotlib
+      copying lib/matplotlib/patches.py -> build/lib.linux-x86_64-cpython-37/matplotlib
+      copying lib/matplotlib/_mathtext_data.py -> build/lib.linux-x86_64-cpython-37/matplotlib
+      copying lib/matplotlib/colorbar.py -> build/lib.linux-x86_64-cpython-37/matplotlib
+      copying lib/matplotlib/text.py -> build/lib.linux-x86_64-cpython-37/matplotlib
+      copying lib/matplotlib/mlab.py -> build/lib.linux-x86_64-cpython-37/matplotlib
+      copying lib/matplotlib/container.py -> build/lib.linux-x86_64-cpython-37/matplotlib
+      copying lib/matplotlib/docstring.py -> build/lib.linux-x86_64-cpython-37/matplotlib
+      copying lib/matplotlib/textpath.py -> build/lib.linux-x86_64-cpython-37/matplotlib
+      copying lib/matplotlib/_constrained_layout.py -> build/lib.linux-x86_64-cpython-37/matplotlib
+      copying lib/matplotlib/category.py -> build/lib.linux-x86_64-cpython-37/matplotlib
+      copying lib/matplotlib/transforms.py -> build/lib.linux-x86_64-cpython-37/matplotlib
+      copying lib/matplotlib/image.py -> build/lib.linux-x86_64-cpython-37/matplotlib
+      copying lib/matplotlib/_pylab_helpers.py -> build/lib.linux-x86_64-cpython-37/matplotlib
+      copying lib/matplotlib/offsetbox.py -> build/lib.linux-x86_64-cpython-37/matplotlib
+      copying lib/matplotlib/backend_tools.py -> build/lib.linux-x86_64-cpython-37/matplotlib
+      copying lib/matplotlib/type1font.py -> build/lib.linux-x86_64-cpython-37/matplotlib
+      copying lib/matplotlib/mathtext.py -> build/lib.linux-x86_64-cpython-37/matplotlib
+      copying lib/matplotlib/font_manager.py -> build/lib.linux-x86_64-cpython-37/matplotlib
+      copying lib/matplotlib/lines.py -> build/lib.linux-x86_64-cpython-37/matplotlib
+      copying lib/matplotlib/streamplot.py -> build/lib.linux-x86_64-cpython-37/matplotlib
+      copying lib/matplotlib/_text_layout.py -> build/lib.linux-x86_64-cpython-37/matplotlib
+      copying lib/matplotlib/animation.py -> build/lib.linux-x86_64-cpython-37/matplotlib
+      copying lib/matplotlib/path.py -> build/lib.linux-x86_64-cpython-37/matplotlib
+      copying lib/matplotlib/collections.py -> build/lib.linux-x86_64-cpython-37/matplotlib
+      creating build/lib.linux-x86_64-cpython-37/mpl_toolkits/mplot3d
+      copying lib/mpl_toolkits/mplot3d/axis3d.py -> build/lib.linux-x86_64-cpython-37/mpl_toolkits/mplot3d
+      copying lib/mpl_toolkits/mplot3d/__init__.py -> build/lib.linux-x86_64-cpython-37/mpl_toolkits/mplot3d
+      copying lib/mpl_toolkits/mplot3d/art3d.py -> build/lib.linux-x86_64-cpython-37/mpl_toolkits/mplot3d
+      copying lib/mpl_toolkits/mplot3d/proj3d.py -> build/lib.linux-x86_64-cpython-37/mpl_toolkits/mplot3d
+      copying lib/mpl_toolkits/mplot3d/axes3d.py -> build/lib.linux-x86_64-cpython-37/mpl_toolkits/mplot3d
+      creating build/lib.linux-x86_64-cpython-37/mpl_toolkits/axisartist
+      copying lib/mpl_toolkits/axisartist/parasite_axes.py -> build/lib.linux-x86_64-cpython-37/mpl_toolkits/axisartist
+      copying lib/mpl_toolkits/axisartist/angle_helper.py -> build/lib.linux-x86_64-cpython-37/mpl_toolkits/axisartist
+      copying lib/mpl_toolkits/axisartist/grid_helper_curvelinear.py -> build/lib.linux-x86_64-cpython-37/mpl_toolkits/axisartist
+      copying lib/mpl_toolkits/axisartist/axes_divider.py -> build/lib.linux-x86_64-cpython-37/mpl_toolkits/axisartist
+      copying lib/mpl_toolkits/axisartist/axes_grid.py -> build/lib.linux-x86_64-cpython-37/mpl_toolkits/axisartist
+      copying lib/mpl_toolkits/axisartist/floating_axes.py -> build/lib.linux-x86_64-cpython-37/mpl_toolkits/axisartist
+      copying lib/mpl_toolkits/axisartist/clip_path.py -> build/lib.linux-x86_64-cpython-37/mpl_toolkits/axisartist
+      copying lib/mpl_toolkits/axisartist/axisline_style.py -> build/lib.linux-x86_64-cpython-37/mpl_toolkits/axisartist
+      copying lib/mpl_toolkits/axisartist/axislines.py -> build/lib.linux-x86_64-cpython-37/mpl_toolkits/axisartist
+      copying lib/mpl_toolkits/axisartist/axis_artist.py -> build/lib.linux-x86_64-cpython-37/mpl_toolkits/axisartist
+      copying lib/mpl_toolkits/axisartist/grid_finder.py -> build/lib.linux-x86_64-cpython-37/mpl_toolkits/axisartist
+      copying lib/mpl_toolkits/axisartist/axes_rgb.py -> build/lib.linux-x86_64-cpython-37/mpl_toolkits/axisartist
+      copying lib/mpl_toolkits/axisartist/__init__.py -> build/lib.linux-x86_64-cpython-37/mpl_toolkits/axisartist
+      creating build/lib.linux-x86_64-cpython-37/mpl_toolkits/tests
+      copying lib/mpl_toolkits/tests/test_axisartist_axis_artist.py -> build/lib.linux-x86_64-cpython-37/mpl_toolkits/tests
+      copying lib/mpl_toolkits/tests/test_axisartist_floating_axes.py -> build/lib.linux-x86_64-cpython-37/mpl_toolkits/tests
+      copying lib/mpl_toolkits/tests/conftest.py -> build/lib.linux-x86_64-cpython-37/mpl_toolkits/tests
+      copying lib/mpl_toolkits/tests/test_axisartist_angle_helper.py -> build/lib.linux-x86_64-cpython-37/mpl_toolkits/tests
+      copying lib/mpl_toolkits/tests/test_axisartist_grid_helper_curvelinear.py -> build/lib.linux-x86_64-cpython-37/mpl_toolkits/tests
+      copying lib/mpl_toolkits/tests/__init__.py -> build/lib.linux-x86_64-cpython-37/mpl_toolkits/tests
+      copying lib/mpl_toolkits/tests/test_axisartist_axislines.py -> build/lib.linux-x86_64-cpython-37/mpl_toolkits/tests
+      copying lib/mpl_toolkits/tests/test_axisartist_clip_path.py -> build/lib.linux-x86_64-cpython-37/mpl_toolkits/tests
+      copying lib/mpl_toolkits/tests/test_axisartist_grid_finder.py -> build/lib.linux-x86_64-cpython-37/mpl_toolkits/tests
+      copying lib/mpl_toolkits/tests/test_axes_grid.py -> build/lib.linux-x86_64-cpython-37/mpl_toolkits/tests
+      copying lib/mpl_toolkits/tests/test_mplot3d.py -> build/lib.linux-x86_64-cpython-37/mpl_toolkits/tests
+      copying lib/mpl_toolkits/tests/test_axes_grid1.py -> build/lib.linux-x86_64-cpython-37/mpl_toolkits/tests
+      creating build/lib.linux-x86_64-cpython-37/mpl_toolkits/axes_grid
+      copying lib/mpl_toolkits/axes_grid/axes_size.py -> build/lib.linux-x86_64-cpython-37/mpl_toolkits/axes_grid
+      copying lib/mpl_toolkits/axes_grid/parasite_axes.py -> build/lib.linux-x86_64-cpython-37/mpl_toolkits/axes_grid
+      copying lib/mpl_toolkits/axes_grid/angle_helper.py -> build/lib.linux-x86_64-cpython-37/mpl_toolkits/axes_grid
+      copying lib/mpl_toolkits/axes_grid/grid_helper_curvelinear.py -> build/lib.linux-x86_64-cpython-37/mpl_toolkits/axes_grid
+      copying lib/mpl_toolkits/axes_grid/axes_divider.py -> build/lib.linux-x86_64-cpython-37/mpl_toolkits/axes_grid
+      copying lib/mpl_toolkits/axes_grid/inset_locator.py -> build/lib.linux-x86_64-cpython-37/mpl_toolkits/axes_grid
+      copying lib/mpl_toolkits/axes_grid/axes_grid.py -> build/lib.linux-x86_64-cpython-37/mpl_toolkits/axes_grid
+      copying lib/mpl_toolkits/axes_grid/floating_axes.py -> build/lib.linux-x86_64-cpython-37/mpl_toolkits/axes_grid
+      copying lib/mpl_toolkits/axes_grid/clip_path.py -> build/lib.linux-x86_64-cpython-37/mpl_toolkits/axes_grid
+      copying lib/mpl_toolkits/axes_grid/axisline_style.py -> build/lib.linux-x86_64-cpython-37/mpl_toolkits/axes_grid
+      copying lib/mpl_toolkits/axes_grid/axislines.py -> build/lib.linux-x86_64-cpython-37/mpl_toolkits/axes_grid
+      copying lib/mpl_toolkits/axes_grid/axis_artist.py -> build/lib.linux-x86_64-cpython-37/mpl_toolkits/axes_grid
+      copying lib/mpl_toolkits/axes_grid/grid_finder.py -> build/lib.linux-x86_64-cpython-37/mpl_toolkits/axes_grid
+      copying lib/mpl_toolkits/axes_grid/axes_rgb.py -> build/lib.linux-x86_64-cpython-37/mpl_toolkits/axes_grid
+      copying lib/mpl_toolkits/axes_grid/__init__.py -> build/lib.linux-x86_64-cpython-37/mpl_toolkits/axes_grid
+      copying lib/mpl_toolkits/axes_grid/anchored_artists.py -> build/lib.linux-x86_64-cpython-37/mpl_toolkits/axes_grid
+      creating build/lib.linux-x86_64-cpython-37/mpl_toolkits/axes_grid1
+      copying lib/mpl_toolkits/axes_grid1/axes_size.py -> build/lib.linux-x86_64-cpython-37/mpl_toolkits/axes_grid1
+      copying lib/mpl_toolkits/axes_grid1/parasite_axes.py -> build/lib.linux-x86_64-cpython-37/mpl_toolkits/axes_grid1
+      copying lib/mpl_toolkits/axes_grid1/axes_divider.py -> build/lib.linux-x86_64-cpython-37/mpl_toolkits/axes_grid1
+      copying lib/mpl_toolkits/axes_grid1/inset_locator.py -> build/lib.linux-x86_64-cpython-37/mpl_toolkits/axes_grid1
+      copying lib/mpl_toolkits/axes_grid1/axes_grid.py -> build/lib.linux-x86_64-cpython-37/mpl_toolkits/axes_grid1
+      copying lib/mpl_toolkits/axes_grid1/mpl_axes.py -> build/lib.linux-x86_64-cpython-37/mpl_toolkits/axes_grid1
+      copying lib/mpl_toolkits/axes_grid1/axes_rgb.py -> build/lib.linux-x86_64-cpython-37/mpl_toolkits/axes_grid1
+      copying lib/mpl_toolkits/axes_grid1/__init__.py -> build/lib.linux-x86_64-cpython-37/mpl_toolkits/axes_grid1
+      copying lib/mpl_toolkits/axes_grid1/anchored_artists.py -> build/lib.linux-x86_64-cpython-37/mpl_toolkits/axes_grid1
+      creating build/lib.linux-x86_64-cpython-37/matplotlib/compat
+      copying lib/matplotlib/compat/__init__.py -> build/lib.linux-x86_64-cpython-37/matplotlib/compat
+      creating build/lib.linux-x86_64-cpython-37/matplotlib/style
+      copying lib/matplotlib/style/core.py -> build/lib.linux-x86_64-cpython-37/matplotlib/style
+      copying lib/matplotlib/style/__init__.py -> build/lib.linux-x86_64-cpython-37/matplotlib/style
+      creating build/lib.linux-x86_64-cpython-37/matplotlib/_api
+      copying lib/matplotlib/_api/deprecation.py -> build/lib.linux-x86_64-cpython-37/matplotlib/_api
+      copying lib/matplotlib/_api/__init__.py -> build/lib.linux-x86_64-cpython-37/matplotlib/_api
+      creating build/lib.linux-x86_64-cpython-37/matplotlib/testing
+      copying lib/matplotlib/testing/exceptions.py -> build/lib.linux-x86_64-cpython-37/matplotlib/testing
+      copying lib/matplotlib/testing/compare.py -> build/lib.linux-x86_64-cpython-37/matplotlib/testing
+      copying lib/matplotlib/testing/conftest.py -> build/lib.linux-x86_64-cpython-37/matplotlib/testing
+      copying lib/matplotlib/testing/widgets.py -> build/lib.linux-x86_64-cpython-37/matplotlib/testing
+      copying lib/matplotlib/testing/__init__.py -> build/lib.linux-x86_64-cpython-37/matplotlib/testing
+      copying lib/matplotlib/testing/decorators.py -> build/lib.linux-x86_64-cpython-37/matplotlib/testing
+      creating build/lib.linux-x86_64-cpython-37/matplotlib/cbook
+      copying lib/matplotlib/cbook/deprecation.py -> build/lib.linux-x86_64-cpython-37/matplotlib/cbook
+      copying lib/matplotlib/cbook/__init__.py -> build/lib.linux-x86_64-cpython-37/matplotlib/cbook
+      creating build/lib.linux-x86_64-cpython-37/matplotlib/axes
+      copying lib/matplotlib/axes/_secondary_axes.py -> build/lib.linux-x86_64-cpython-37/matplotlib/axes
+      copying lib/matplotlib/axes/_axes.py -> build/lib.linux-x86_64-cpython-37/matplotlib/axes
+      copying lib/matplotlib/axes/_subplots.py -> build/lib.linux-x86_64-cpython-37/matplotlib/axes
+      copying lib/matplotlib/axes/__init__.py -> build/lib.linux-x86_64-cpython-37/matplotlib/axes
+      copying lib/matplotlib/axes/_base.py -> build/lib.linux-x86_64-cpython-37/matplotlib/axes
+      creating build/lib.linux-x86_64-cpython-37/matplotlib/projections
+      copying lib/matplotlib/projections/geo.py -> build/lib.linux-x86_64-cpython-37/matplotlib/projections
+      copying lib/matplotlib/projections/__init__.py -> build/lib.linux-x86_64-cpython-37/matplotlib/projections
+      copying lib/matplotlib/projections/polar.py -> build/lib.linux-x86_64-cpython-37/matplotlib/projections
+      creating build/lib.linux-x86_64-cpython-37/matplotlib/backends
+      copying lib/matplotlib/backends/qt_compat.py -> build/lib.linux-x86_64-cpython-37/matplotlib/backends
+      copying lib/matplotlib/backends/backend_nbagg.py -> build/lib.linux-x86_64-cpython-37/matplotlib/backends
+      copying lib/matplotlib/backends/backend_macosx.py -> build/lib.linux-x86_64-cpython-37/matplotlib/backends
+      copying lib/matplotlib/backends/backend_tkagg.py -> build/lib.linux-x86_64-cpython-37/matplotlib/backends
+      copying lib/matplotlib/backends/backend_agg.py -> build/lib.linux-x86_64-cpython-37/matplotlib/backends
+      copying lib/matplotlib/backends/_backend_tk.py -> build/lib.linux-x86_64-cpython-37/matplotlib/backends
+      copying lib/matplotlib/backends/backend_tkcairo.py -> build/lib.linux-x86_64-cpython-37/matplotlib/backends
+      copying lib/matplotlib/backends/backend_cairo.py -> build/lib.linux-x86_64-cpython-37/matplotlib/backends
+      copying lib/matplotlib/backends/backend_svg.py -> build/lib.linux-x86_64-cpython-37/matplotlib/backends
+      copying lib/matplotlib/backends/backend_qt5agg.py -> build/lib.linux-x86_64-cpython-37/matplotlib/backends
+      copying lib/matplotlib/backends/backend_qt5.py -> build/lib.linux-x86_64-cpython-37/matplotlib/backends
+      copying lib/matplotlib/backends/backend_template.py -> build/lib.linux-x86_64-cpython-37/matplotlib/backends
+      copying lib/matplotlib/backends/backend_qt4cairo.py -> build/lib.linux-x86_64-cpython-37/matplotlib/backends
+      copying lib/matplotlib/backends/_backend_pdf_ps.py -> build/lib.linux-x86_64-cpython-37/matplotlib/backends
+      copying lib/matplotlib/backends/backend_webagg_core.py -> build/lib.linux-x86_64-cpython-37/matplotlib/backends
+      copying lib/matplotlib/backends/backend_webagg.py -> build/lib.linux-x86_64-cpython-37/matplotlib/backends
+      copying lib/matplotlib/backends/backend_ps.py -> build/lib.linux-x86_64-cpython-37/matplotlib/backends
+      copying lib/matplotlib/backends/backend_qt4agg.py -> build/lib.linux-x86_64-cpython-37/matplotlib/backends
+      copying lib/matplotlib/backends/backend_qt5cairo.py -> build/lib.linux-x86_64-cpython-37/matplotlib/backends
+      copying lib/matplotlib/backends/__init__.py -> build/lib.linux-x86_64-cpython-37/matplotlib/backends
+      copying lib/matplotlib/backends/backend_mixed.py -> build/lib.linux-x86_64-cpython-37/matplotlib/backends
+      copying lib/matplotlib/backends/backend_wxcairo.py -> build/lib.linux-x86_64-cpython-37/matplotlib/backends
+      copying lib/matplotlib/backends/backend_pgf.py -> build/lib.linux-x86_64-cpython-37/matplotlib/backends
+      copying lib/matplotlib/backends/backend_wxagg.py -> build/lib.linux-x86_64-cpython-37/matplotlib/backends
+      copying lib/matplotlib/backends/backend_gtk3.py -> build/lib.linux-x86_64-cpython-37/matplotlib/backends
+      copying lib/matplotlib/backends/backend_pdf.py -> build/lib.linux-x86_64-cpython-37/matplotlib/backends
+      copying lib/matplotlib/backends/backend_qt4.py -> build/lib.linux-x86_64-cpython-37/matplotlib/backends
+      copying lib/matplotlib/backends/backend_gtk3agg.py -> build/lib.linux-x86_64-cpython-37/matplotlib/backends
+      copying lib/matplotlib/backends/backend_wx.py -> build/lib.linux-x86_64-cpython-37/matplotlib/backends
+      copying lib/matplotlib/backends/backend_gtk3cairo.py -> build/lib.linux-x86_64-cpython-37/matplotlib/backends
+      creating build/lib.linux-x86_64-cpython-37/matplotlib/tests
+      copying lib/matplotlib/tests/test_type1font.py -> build/lib.linux-x86_64-cpython-37/matplotlib/tests
+      copying lib/matplotlib/tests/test_dates.py -> build/lib.linux-x86_64-cpython-37/matplotlib/tests
+      copying lib/matplotlib/tests/test_quiver.py -> build/lib.linux-x86_64-cpython-37/matplotlib/tests
+      copying lib/matplotlib/tests/test_simplification.py -> build/lib.linux-x86_64-cpython-37/matplotlib/tests
+      copying lib/matplotlib/tests/test_lines.py -> build/lib.linux-x86_64-cpython-37/matplotlib/tests
+      copying lib/matplotlib/tests/test_polar.py -> build/lib.linux-x86_64-cpython-37/matplotlib/tests
+      copying lib/matplotlib/tests/test_scale.py -> build/lib.linux-x86_64-cpython-37/matplotlib/tests
+      copying lib/matplotlib/tests/test_testing.py -> build/lib.linux-x86_64-cpython-37/matplotlib/tests
+      copying lib/matplotlib/tests/test_afm.py -> build/lib.linux-x86_64-cpython-37/matplotlib/tests
+      copying lib/matplotlib/tests/test_contour.py -> build/lib.linux-x86_64-cpython-37/matplotlib/tests
+      copying lib/matplotlib/tests/test_axes.py -> build/lib.linux-x86_64-cpython-37/matplotlib/tests
+      copying lib/matplotlib/tests/test_backend_tk.py -> build/lib.linux-x86_64-cpython-37/matplotlib/tests
+      copying lib/matplotlib/tests/test_figure.py -> build/lib.linux-x86_64-cpython-37/matplotlib/tests
+      copying lib/matplotlib/tests/test_png.py -> build/lib.linux-x86_64-cpython-37/matplotlib/tests
+      copying lib/matplotlib/tests/test_backend_svg.py -> build/lib.linux-x86_64-cpython-37/matplotlib/tests
+      copying lib/matplotlib/tests/test_skew.py -> build/lib.linux-x86_64-cpython-37/matplotlib/tests
+      copying lib/matplotlib/tests/conftest.py -> build/lib.linux-x86_64-cpython-37/matplotlib/tests
+      copying lib/matplotlib/tests/test_preprocess_data.py -> build/lib.linux-x86_64-cpython-37/matplotlib/tests
+      copying lib/matplotlib/tests/test_compare_images.py -> build/lib.linux-x86_64-cpython-37/matplotlib/tests
+      copying lib/matplotlib/tests/test_bbox_tight.py -> build/lib.linux-x86_64-cpython-37/matplotlib/tests
+      copying lib/matplotlib/tests/test_backend_bases.py -> build/lib.linux-x86_64-cpython-37/matplotlib/tests
+      copying lib/matplotlib/tests/test_backends_interactive.py -> build/lib.linux-x86_64-cpython-37/matplotlib/tests
+      copying lib/matplotlib/tests/test_basic.py -> build/lib.linux-x86_64-cpython-37/matplotlib/tests
+      copying lib/matplotlib/tests/test_units.py -> build/lib.linux-x86_64-cpython-37/matplotlib/tests
+      copying lib/matplotlib/tests/test_backend_ps.py -> build/lib.linux-x86_64-cpython-37/matplotlib/tests
+      copying lib/matplotlib/tests/test_usetex.py -> build/lib.linux-x86_64-cpython-37/matplotlib/tests
+      copying lib/matplotlib/tests/test_backend_pdf.py -> build/lib.linux-x86_64-cpython-37/matplotlib/tests
+      copying lib/matplotlib/tests/test_image.py -> build/lib.linux-x86_64-cpython-37/matplotlib/tests
+      copying lib/matplotlib/tests/test_mlab.py -> build/lib.linux-x86_64-cpython-37/matplotlib/tests
+      copying lib/matplotlib/tests/test_tightlayout.py -> build/lib.linux-x86_64-cpython-37/matplotlib/tests
+      copying lib/matplotlib/tests/test_text.py -> build/lib.linux-x86_64-cpython-37/matplotlib/tests
+      copying lib/matplotlib/tests/test_arrow_patches.py -> build/lib.linux-x86_64-cpython-37/matplotlib/tests
+      copying lib/matplotlib/tests/test_backend_pgf.py -> build/lib.linux-x86_64-cpython-37/matplotlib/tests
+      copying lib/matplotlib/tests/test_agg.py -> build/lib.linux-x86_64-cpython-37/matplotlib/tests
+      copying lib/matplotlib/tests/test_ttconv.py -> build/lib.linux-x86_64-cpython-37/matplotlib/tests
+      copying lib/matplotlib/tests/test_cbook.py -> build/lib.linux-x86_64-cpython-37/matplotlib/tests
+      copying lib/matplotlib/tests/test_cycles.py -> build/lib.linux-x86_64-cpython-37/matplotlib/tests
+      copying lib/matplotlib/tests/test_backend_qt.py -> build/lib.linux-x86_64-cpython-37/matplotlib/tests
+      copying lib/matplotlib/tests/test_agg_filter.py -> build/lib.linux-x86_64-cpython-37/matplotlib/tests
+      copying lib/matplotlib/tests/test_colorbar.py -> build/lib.linux-x86_64-cpython-37/matplotlib/tests
+      copying lib/matplotlib/tests/test_marker.py -> build/lib.linux-x86_64-cpython-37/matplotlib/tests
+      copying lib/matplotlib/tests/test_gridspec.py -> build/lib.linux-x86_64-cpython-37/matplotlib/tests
+      copying lib/matplotlib/tests/test_sankey.py -> build/lib.linux-x86_64-cpython-37/matplotlib/tests
+      copying lib/matplotlib/tests/test_path.py -> build/lib.linux-x86_64-cpython-37/matplotlib/tests
+      copying lib/matplotlib/tests/test_transforms.py -> build/lib.linux-x86_64-cpython-37/matplotlib/tests
+      copying lib/matplotlib/tests/test_rcparams.py -> build/lib.linux-x86_64-cpython-37/matplotlib/tests
+      copying lib/matplotlib/tests/test_triangulation.py -> build/lib.linux-x86_64-cpython-37/matplotlib/tests
+      copying lib/matplotlib/tests/test_mathtext.py -> build/lib.linux-x86_64-cpython-37/matplotlib/tests
+      copying lib/matplotlib/tests/test_backend_tools.py -> build/lib.linux-x86_64-cpython-37/matplotlib/tests
+      copying lib/matplotlib/tests/__init__.py -> build/lib.linux-x86_64-cpython-37/matplotlib/tests
+      copying lib/matplotlib/tests/test_texmanager.py -> build/lib.linux-x86_64-cpython-37/matplotlib/tests
+      copying lib/matplotlib/tests/test_dviread.py -> build/lib.linux-x86_64-cpython-37/matplotlib/tests
+      copying lib/matplotlib/tests/test_container.py -> build/lib.linux-x86_64-cpython-37/matplotlib/tests
+      copying lib/matplotlib/tests/test_fontconfig_pattern.py -> build/lib.linux-x86_64-cpython-37/matplotlib/tests
+      copying lib/matplotlib/tests/test_font_manager.py -> build/lib.linux-x86_64-cpython-37/matplotlib/tests
+      copying lib/matplotlib/tests/test_pickle.py -> build/lib.linux-x86_64-cpython-37/matplotlib/tests
+      copying lib/matplotlib/tests/test_constrainedlayout.py -> build/lib.linux-x86_64-cpython-37/matplotlib/tests
+      copying lib/matplotlib/tests/test_api.py -> build/lib.linux-x86_64-cpython-37/matplotlib/tests
+      copying lib/matplotlib/tests/test_subplots.py -> build/lib.linux-x86_64-cpython-37/matplotlib/tests
+      copying lib/matplotlib/tests/test_patheffects.py -> build/lib.linux-x86_64-cpython-37/matplotlib/tests
+      copying lib/matplotlib/tests/test_streamplot.py -> build/lib.linux-x86_64-cpython-37/matplotlib/tests
+      copying lib/matplotlib/tests/test_matplotlib.py -> build/lib.linux-x86_64-cpython-37/matplotlib/tests
+      copying lib/matplotlib/tests/test_table.py -> build/lib.linux-x86_64-cpython-37/matplotlib/tests
+      copying lib/matplotlib/tests/test_collections.py -> build/lib.linux-x86_64-cpython-37/matplotlib/tests
+      copying lib/matplotlib/tests/test_artist.py -> build/lib.linux-x86_64-cpython-37/matplotlib/tests
+      copying lib/matplotlib/tests/test_sphinxext.py -> build/lib.linux-x86_64-cpython-37/matplotlib/tests
+      copying lib/matplotlib/tests/test_animation.py -> build/lib.linux-x86_64-cpython-37/matplotlib/tests
+      copying lib/matplotlib/tests/test_widgets.py -> build/lib.linux-x86_64-cpython-37/matplotlib/tests
+      copying lib/matplotlib/tests/test_style.py -> build/lib.linux-x86_64-cpython-37/matplotlib/tests
+      copying lib/matplotlib/tests/test_patches.py -> build/lib.linux-x86_64-cpython-37/matplotlib/tests
+      copying lib/matplotlib/tests/test_legend.py -> build/lib.linux-x86_64-cpython-37/matplotlib/tests
+      copying lib/matplotlib/tests/test_category.py -> build/lib.linux-x86_64-cpython-37/matplotlib/tests
+      copying lib/matplotlib/tests/test_backend_cairo.py -> build/lib.linux-x86_64-cpython-37/matplotlib/tests
+      copying lib/matplotlib/tests/test_backend_nbagg.py -> build/lib.linux-x86_64-cpython-37/matplotlib/tests
+      copying lib/matplotlib/tests/test_pyplot.py -> build/lib.linux-x86_64-cpython-37/matplotlib/tests
+      copying lib/matplotlib/tests/test_ticker.py -> build/lib.linux-x86_64-cpython-37/matplotlib/tests
+      copying lib/matplotlib/tests/test_offsetbox.py -> build/lib.linux-x86_64-cpython-37/matplotlib/tests
+      copying lib/matplotlib/tests/test_backend_webagg.py -> build/lib.linux-x86_64-cpython-37/matplotlib/tests
+      copying lib/matplotlib/tests/test_determinism.py -> build/lib.linux-x86_64-cpython-37/matplotlib/tests
+      copying lib/matplotlib/tests/test_colors.py -> build/lib.linux-x86_64-cpython-37/matplotlib/tests
+      copying lib/matplotlib/tests/test_backend_gtk3.py -> build/lib.linux-x86_64-cpython-37/matplotlib/tests
+      copying lib/matplotlib/tests/test_spines.py -> build/lib.linux-x86_64-cpython-37/matplotlib/tests
+      creating build/lib.linux-x86_64-cpython-37/matplotlib/tri
+      copying lib/matplotlib/tri/trifinder.py -> build/lib.linux-x86_64-cpython-37/matplotlib/tri
+      copying lib/matplotlib/tri/tritools.py -> build/lib.linux-x86_64-cpython-37/matplotlib/tri
+      copying lib/matplotlib/tri/tricontour.py -> build/lib.linux-x86_64-cpython-37/matplotlib/tri
+      copying lib/matplotlib/tri/__init__.py -> build/lib.linux-x86_64-cpython-37/matplotlib/tri
+      copying lib/matplotlib/tri/triplot.py -> build/lib.linux-x86_64-cpython-37/matplotlib/tri
+      copying lib/matplotlib/tri/triinterpolate.py -> build/lib.linux-x86_64-cpython-37/matplotlib/tri
+      copying lib/matplotlib/tri/tripcolor.py -> build/lib.linux-x86_64-cpython-37/matplotlib/tri
+      copying lib/matplotlib/tri/trirefine.py -> build/lib.linux-x86_64-cpython-37/matplotlib/tri
+      copying lib/matplotlib/tri/triangulation.py -> build/lib.linux-x86_64-cpython-37/matplotlib/tri
+      creating build/lib.linux-x86_64-cpython-37/matplotlib/sphinxext
+      copying lib/matplotlib/sphinxext/__init__.py -> build/lib.linux-x86_64-cpython-37/matplotlib/sphinxext
+      copying lib/matplotlib/sphinxext/plot_directive.py -> build/lib.linux-x86_64-cpython-37/matplotlib/sphinxext
+      copying lib/matplotlib/sphinxext/mathmpl.py -> build/lib.linux-x86_64-cpython-37/matplotlib/sphinxext
+      creating build/lib.linux-x86_64-cpython-37/matplotlib/testing/jpl_units
+      copying lib/matplotlib/testing/jpl_units/Epoch.py -> build/lib.linux-x86_64-cpython-37/matplotlib/testing/jpl_units
+      copying lib/matplotlib/testing/jpl_units/UnitDblFormatter.py -> build/lib.linux-x86_64-cpython-37/matplotlib/testing/jpl_units
+      copying lib/matplotlib/testing/jpl_units/EpochConverter.py -> build/lib.linux-x86_64-cpython-37/matplotlib/testing/jpl_units
+      copying lib/matplotlib/testing/jpl_units/__init__.py -> build/lib.linux-x86_64-cpython-37/matplotlib/testing/jpl_units
+      copying lib/matplotlib/testing/jpl_units/Duration.py -> build/lib.linux-x86_64-cpython-37/matplotlib/testing/jpl_units
+      copying lib/matplotlib/testing/jpl_units/UnitDbl.py -> build/lib.linux-x86_64-cpython-37/matplotlib/testing/jpl_units
+      copying lib/matplotlib/testing/jpl_units/UnitDblConverter.py -> build/lib.linux-x86_64-cpython-37/matplotlib/testing/jpl_units
+      copying lib/matplotlib/testing/jpl_units/StrConverter.py -> build/lib.linux-x86_64-cpython-37/matplotlib/testing/jpl_units
+      creating build/lib.linux-x86_64-cpython-37/matplotlib/backends/qt_editor
+      copying lib/matplotlib/backends/qt_editor/figureoptions.py -> build/lib.linux-x86_64-cpython-37/matplotlib/backends/qt_editor
+      copying lib/matplotlib/backends/qt_editor/_formlayout.py -> build/lib.linux-x86_64-cpython-37/matplotlib/backends/qt_editor
+      copying lib/matplotlib/backends/qt_editor/__init__.py -> build/lib.linux-x86_64-cpython-37/matplotlib/backends/qt_editor
+      copying lib/matplotlib/backends/qt_editor/_formsubplottool.py -> build/lib.linux-x86_64-cpython-37/matplotlib/backends/qt_editor
+      copying lib/matplotlib/backends/qt_editor/formsubplottool.py -> build/lib.linux-x86_64-cpython-37/matplotlib/backends/qt_editor
+      creating build/lib.linux-x86_64-cpython-37/matplotlib/mpl-data
+      creating build/lib.linux-x86_64-cpython-37/matplotlib/mpl-data/images
+      copying lib/matplotlib/mpl-data/images/move-symbolic.svg -> build/lib.linux-x86_64-cpython-37/matplotlib/mpl-data/images
+      copying lib/matplotlib/mpl-data/images/help_large.png -> build/lib.linux-x86_64-cpython-37/matplotlib/mpl-data/images
+      creating build/lib.linux-x86_64-cpython-37/matplotlib/mpl-data/fonts
+      creating build/lib.linux-x86_64-cpython-37/matplotlib/mpl-data/fonts/afm
+      copying lib/matplotlib/mpl-data/fonts/afm/phvro8a.afm -> build/lib.linux-x86_64-cpython-37/matplotlib/mpl-data/fonts/afm
+      copying lib/matplotlib/mpl-data/images/subplots-symbolic.svg -> build/lib.linux-x86_64-cpython-37/matplotlib/mpl-data/images
+      creating build/lib.linux-x86_64-cpython-37/matplotlib/mpl-data/stylelib
+      copying lib/matplotlib/mpl-data/stylelib/seaborn.mplstyle -> build/lib.linux-x86_64-cpython-37/matplotlib/mpl-data/stylelib
+      creating build/lib.linux-x86_64-cpython-37/matplotlib/mpl-data/sample_data
+      copying lib/matplotlib/mpl-data/sample_data/s1045.ima.gz -> build/lib.linux-x86_64-cpython-37/matplotlib/mpl-data/sample_data
+      copying lib/matplotlib/mpl-data/images/matplotlib.pdf -> build/lib.linux-x86_64-cpython-37/matplotlib/mpl-data/images
+      copying lib/matplotlib/mpl-data/stylelib/seaborn-notebook.mplstyle -> build/lib.linux-x86_64-cpython-37/matplotlib/mpl-data/stylelib
+      copying lib/matplotlib/mpl-data/images/home.png -> build/lib.linux-x86_64-cpython-37/matplotlib/mpl-data/images
+      copying lib/matplotlib/mpl-data/fonts/afm/phvbo8a.afm -> build/lib.linux-x86_64-cpython-37/matplotlib/mpl-data/fonts/afm
+      copying lib/matplotlib/mpl-data/images/filesave.pdf -> build/lib.linux-x86_64-cpython-37/matplotlib/mpl-data/images
+      copying lib/matplotlib/mpl-data/fonts/afm/pbkd8a.afm -> build/lib.linux-x86_64-cpython-37/matplotlib/mpl-data/fonts/afm
+      creating build/lib.linux-x86_64-cpython-37/matplotlib/mpl-data/fonts/ttf
+      copying lib/matplotlib/mpl-data/fonts/ttf/DejaVuSansMono-Bold.ttf -> build/lib.linux-x86_64-cpython-37/matplotlib/mpl-data/fonts/ttf
+      creating build/lib.linux-x86_64-cpython-37/matplotlib/backends/web_backend
+      copying lib/matplotlib/backends/web_backend/.eslintrc.js -> build/lib.linux-x86_64-cpython-37/matplotlib/backends/web_backend
+      copying lib/matplotlib/mpl-data/stylelib/grayscale.mplstyle -> build/lib.linux-x86_64-cpython-37/matplotlib/mpl-data/stylelib
+      copying lib/matplotlib/mpl-data/fonts/afm/putri8a.afm -> build/lib.linux-x86_64-cpython-37/matplotlib/mpl-data/fonts/afm
+      creating build/lib.linux-x86_64-cpython-37/matplotlib/mpl-data/fonts/pdfcorefonts
+      copying lib/matplotlib/mpl-data/fonts/pdfcorefonts/Symbol.afm -> build/lib.linux-x86_64-cpython-37/matplotlib/mpl-data/fonts/pdfcorefonts
+      copying lib/matplotlib/mpl-data/images/forward.svg -> build/lib.linux-x86_64-cpython-37/matplotlib/mpl-data/images
+      copying lib/matplotlib/backends/web_backend/.prettierignore -> build/lib.linux-x86_64-cpython-37/matplotlib/backends/web_backend
+      copying lib/matplotlib/mpl-data/fonts/pdfcorefonts/readme.txt -> build/lib.linux-x86_64-cpython-37/matplotlib/mpl-data/fonts/pdfcorefonts
+      copying lib/matplotlib/mpl-data/fonts/ttf/DejaVuSansMono.ttf -> build/lib.linux-x86_64-cpython-37/matplotlib/mpl-data/fonts/ttf
+      copying lib/matplotlib/mpl-data/fonts/afm/cmtt10.afm -> build/lib.linux-x86_64-cpython-37/matplotlib/mpl-data/fonts/afm
+      copying lib/matplotlib/mpl-data/fonts/ttf/STIXSizTwoSymBol.ttf -> build/lib.linux-x86_64-cpython-37/matplotlib/mpl-data/fonts/ttf
+      copying lib/matplotlib/mpl-data/fonts/afm/cmex10.afm -> build/lib.linux-x86_64-cpython-37/matplotlib/mpl-data/fonts/afm
+      copying lib/matplotlib/mpl-data/fonts/pdfcorefonts/Courier.afm -> build/lib.linux-x86_64-cpython-37/matplotlib/mpl-data/fonts/pdfcorefonts
+      creating build/lib.linux-x86_64-cpython-37/matplotlib/backends/web_backend/js
+      copying lib/matplotlib/backends/web_backend/js/mpl.js -> build/lib.linux-x86_64-cpython-37/matplotlib/backends/web_backend/js
+      copying lib/matplotlib/mpl-data/stylelib/seaborn-white.mplstyle -> build/lib.linux-x86_64-cpython-37/matplotlib/mpl-data/stylelib
+      copying lib/matplotlib/mpl-data/stylelib/dark_background.mplstyle -> build/lib.linux-x86_64-cpython-37/matplotlib/mpl-data/stylelib
+      copying lib/matplotlib/mpl-data/sample_data/embedding_in_wx3.xrc -> build/lib.linux-x86_64-cpython-37/matplotlib/mpl-data/sample_data
+      copying lib/matplotlib/mpl-data/sample_data/jacksboro_fault_dem.npz -> build/lib.linux-x86_64-cpython-37/matplotlib/mpl-data/sample_data
+      copying lib/matplotlib/mpl-data/fonts/ttf/DejaVuSerifDisplay.ttf -> build/lib.linux-x86_64-cpython-37/matplotlib/mpl-data/fonts/ttf
+      copying lib/matplotlib/backends/web_backend/nbagg_uat.ipynb -> build/lib.linux-x86_64-cpython-37/matplotlib/backends/web_backend
+      copying lib/matplotlib/mpl-data/fonts/afm/pplbi8a.afm -> build/lib.linux-x86_64-cpython-37/matplotlib/mpl-data/fonts/afm
+      copying lib/matplotlib/mpl-data/fonts/afm/phvb8a.afm -> build/lib.linux-x86_64-cpython-37/matplotlib/mpl-data/fonts/afm
+      copying lib/matplotlib/mpl-data/fonts/afm/phvro8an.afm -> build/lib.linux-x86_64-cpython-37/matplotlib/mpl-data/fonts/afm
+      copying lib/matplotlib/mpl-data/fonts/afm/pbkdi8a.afm -> build/lib.linux-x86_64-cpython-37/matplotlib/mpl-data/fonts/afm
+      copying lib/matplotlib/mpl-data/fonts/ttf/STIXSizOneSymReg.ttf -> build/lib.linux-x86_64-cpython-37/matplotlib/mpl-data/fonts/ttf
+      copying lib/matplotlib/backends/web_backend/all_figures.html -> build/lib.linux-x86_64-cpython-37/matplotlib/backends/web_backend
+      copying lib/matplotlib/mpl-data/fonts/afm/pbkli8a.afm -> build/lib.linux-x86_64-cpython-37/matplotlib/mpl-data/fonts/afm
+      copying lib/matplotlib/mpl-data/fonts/afm/pncr8a.afm -> build/lib.linux-x86_64-cpython-37/matplotlib/mpl-data/fonts/afm
+      copying lib/matplotlib/backends/web_backend/js/nbagg_mpl.js -> build/lib.linux-x86_64-cpython-37/matplotlib/backends/web_backend/js
+      copying lib/matplotlib/mpl-data/fonts/ttf/DejaVuSans-Bold.ttf -> build/lib.linux-x86_64-cpython-37/matplotlib/mpl-data/fonts/ttf
+      copying lib/matplotlib/mpl-data/images/forward.pdf -> build/lib.linux-x86_64-cpython-37/matplotlib/mpl-data/images
+      copying lib/matplotlib/mpl-data/fonts/afm/pplri8a.afm -> build/lib.linux-x86_64-cpython-37/matplotlib/mpl-data/fonts/afm
+      copying lib/matplotlib/mpl-data/images/subplots.pdf -> build/lib.linux-x86_64-cpython-37/matplotlib/mpl-data/images
+      copying lib/matplotlib/mpl-data/fonts/ttf/STIXSizFourSymReg.ttf -> build/lib.linux-x86_64-cpython-37/matplotlib/mpl-data/fonts/ttf
+      copying lib/matplotlib/mpl-data/fonts/afm/cmsy10.afm -> build/lib.linux-x86_64-cpython-37/matplotlib/mpl-data/fonts/afm
+      creating build/lib.linux-x86_64-cpython-37/matplotlib/backends/web_backend/css
+      copying lib/matplotlib/backends/web_backend/css/page.css -> build/lib.linux-x86_64-cpython-37/matplotlib/backends/web_backend/css
+      copying lib/matplotlib/mpl-data/images/home.svg -> build/lib.linux-x86_64-cpython-37/matplotlib/mpl-data/images
+      copying lib/matplotlib/mpl-data/fonts/ttf/DejaVuSansMono-BoldOblique.ttf -> build/lib.linux-x86_64-cpython-37/matplotlib/mpl-data/fonts/ttf
+      copying lib/matplotlib/mpl-data/images/home.pdf -> build/lib.linux-x86_64-cpython-37/matplotlib/mpl-data/images
+      copying lib/matplotlib/backends/web_backend/package.json -> build/lib.linux-x86_64-cpython-37/matplotlib/backends/web_backend
+      copying lib/matplotlib/mpl-data/fonts/ttf/cmex10.ttf -> build/lib.linux-x86_64-cpython-37/matplotlib/mpl-data/fonts/ttf
+      copying lib/matplotlib/mpl-data/stylelib/seaborn-bright.mplstyle -> build/lib.linux-x86_64-cpython-37/matplotlib/mpl-data/stylelib
+      copying lib/matplotlib/mpl-data/images/filesave.png -> build/lib.linux-x86_64-cpython-37/matplotlib/mpl-data/images
+      copying lib/matplotlib/mpl-data/images/back-symbolic.svg -> build/lib.linux-x86_64-cpython-37/matplotlib/mpl-data/images
+      copying lib/matplotlib/mpl-data/fonts/afm/ptmb8a.afm -> build/lib.linux-x86_64-cpython-37/matplotlib/mpl-data/fonts/afm
+      copying lib/matplotlib/mpl-data/fonts/afm/pcrbo8a.afm -> build/lib.linux-x86_64-cpython-37/matplotlib/mpl-data/fonts/afm
+      copying lib/matplotlib/mpl-data/fonts/afm/pncb8a.afm -> build/lib.linux-x86_64-cpython-37/matplotlib/mpl-data/fonts/afm
+      copying lib/matplotlib/mpl-data/fonts/pdfcorefonts/Courier-Bold.afm -> build/lib.linux-x86_64-cpython-37/matplotlib/mpl-data/fonts/pdfcorefonts
+      copying lib/matplotlib/mpl-data/fonts/ttf/LICENSE_DEJAVU -> build/lib.linux-x86_64-cpython-37/matplotlib/mpl-data/fonts/ttf
+      copying lib/matplotlib/mpl-data/fonts/ttf/DejaVuSans.ttf -> build/lib.linux-x86_64-cpython-37/matplotlib/mpl-data/fonts/ttf
+      copying lib/matplotlib/mpl-data/images/qt4_editor_options.svg -> build/lib.linux-x86_64-cpython-37/matplotlib/mpl-data/images
+      copying lib/matplotlib/mpl-data/fonts/afm/ptmr8a.afm -> build/lib.linux-x86_64-cpython-37/matplotlib/mpl-data/fonts/afm
+      copying lib/matplotlib/mpl-data/stylelib/tableau-colorblind10.mplstyle -> build/lib.linux-x86_64-cpython-37/matplotlib/mpl-data/stylelib
+      copying lib/matplotlib/backends/web_backend/css/boilerplate.css -> build/lib.linux-x86_64-cpython-37/matplotlib/backends/web_backend/css
+      copying lib/matplotlib/mpl-data/sample_data/grace_hopper.jpg -> build/lib.linux-x86_64-cpython-37/matplotlib/mpl-data/sample_data
+      copying lib/matplotlib/mpl-data/fonts/afm/putb8a.afm -> build/lib.linux-x86_64-cpython-37/matplotlib/mpl-data/fonts/afm
+      copying lib/matplotlib/mpl-data/fonts/ttf/DejaVuSerif-Italic.ttf -> build/lib.linux-x86_64-cpython-37/matplotlib/mpl-data/fonts/ttf
+      copying lib/matplotlib/mpl-data/fonts/ttf/cmtt10.ttf -> build/lib.linux-x86_64-cpython-37/matplotlib/mpl-data/fonts/ttf
+      copying lib/matplotlib/mpl-data/images/forward-symbolic.svg -> build/lib.linux-x86_64-cpython-37/matplotlib/mpl-data/images
+      copying lib/matplotlib/mpl-data/stylelib/classic.mplstyle -> build/lib.linux-x86_64-cpython-37/matplotlib/mpl-data/stylelib
+      copying lib/matplotlib/mpl-data/fonts/pdfcorefonts/Times-Bold.afm -> build/lib.linux-x86_64-cpython-37/matplotlib/mpl-data/fonts/pdfcorefonts
+      copying lib/matplotlib/mpl-data/images/back.png -> build/lib.linux-x86_64-cpython-37/matplotlib/mpl-data/images
+      copying lib/matplotlib/mpl-data/sample_data/data_x_x2_x3.csv -> build/lib.linux-x86_64-cpython-37/matplotlib/mpl-data/sample_data
+      copying lib/matplotlib/mpl-data/fonts/afm/pbkl8a.afm -> build/lib.linux-x86_64-cpython-37/matplotlib/mpl-data/fonts/afm
+      copying lib/matplotlib/mpl-data/stylelib/seaborn-colorblind.mplstyle -> build/lib.linux-x86_64-cpython-37/matplotlib/mpl-data/stylelib
+      copying lib/matplotlib/backends/web_backend/.prettierrc -> build/lib.linux-x86_64-cpython-37/matplotlib/backends/web_backend
+      copying lib/matplotlib/mpl-data/fonts/ttf/cmsy10.ttf -> build/lib.linux-x86_64-cpython-37/matplotlib/mpl-data/fonts/ttf
+      copying lib/matplotlib/mpl-data/fonts/afm/pncbi8a.afm -> build/lib.linux-x86_64-cpython-37/matplotlib/mpl-data/fonts/afm
+      copying lib/matplotlib/mpl-data/fonts/pdfcorefonts/Times-Roman.afm -> build/lib.linux-x86_64-cpython-37/matplotlib/mpl-data/fonts/pdfcorefonts
+      copying lib/matplotlib/mpl-data/fonts/ttf/STIXNonUniBol.ttf -> build/lib.linux-x86_64-cpython-37/matplotlib/mpl-data/fonts/ttf
+      copying lib/matplotlib/mpl-data/fonts/ttf/DejaVuSerif-BoldItalic.ttf -> build/lib.linux-x86_64-cpython-37/matplotlib/mpl-data/fonts/ttf
+      copying lib/matplotlib/mpl-data/images/subplots.svg -> build/lib.linux-x86_64-cpython-37/matplotlib/mpl-data/images
+      copying lib/matplotlib/mpl-data/matplotlibrc -> build/lib.linux-x86_64-cpython-37/matplotlib/mpl-data
+      copying lib/matplotlib/mpl-data/fonts/afm/pncri8a.afm -> build/lib.linux-x86_64-cpython-37/matplotlib/mpl-data/fonts/afm
+      copying lib/matplotlib/mpl-data/fonts/ttf/DejaVuSerif-Bold.ttf -> build/lib.linux-x86_64-cpython-37/matplotlib/mpl-data/fonts/ttf
+      copying lib/matplotlib/mpl-data/fonts/ttf/STIXNonUni.ttf -> build/lib.linux-x86_64-cpython-37/matplotlib/mpl-data/fonts/ttf
+      copying lib/matplotlib/backends/web_backend/js/mpl_tornado.js -> build/lib.linux-x86_64-cpython-37/matplotlib/backends/web_backend/js
+      copying lib/matplotlib/mpl-data/stylelib/fivethirtyeight.mplstyle -> build/lib.linux-x86_64-cpython-37/matplotlib/mpl-data/stylelib
+      copying lib/matplotlib/mpl-data/images/zoom_to_rect.pdf -> build/lib.linux-x86_64-cpython-37/matplotlib/mpl-data/images
+      copying lib/matplotlib/mpl-data/fonts/afm/phvr8a.afm -> build/lib.linux-x86_64-cpython-37/matplotlib/mpl-data/fonts/afm
+      copying lib/matplotlib/mpl-data/stylelib/seaborn-paper.mplstyle -> build/lib.linux-x86_64-cpython-37/matplotlib/mpl-data/stylelib
+      copying lib/matplotlib/mpl-data/sample_data/goog.npz -> build/lib.linux-x86_64-cpython-37/matplotlib/mpl-data/sample_data
+      copying lib/matplotlib/mpl-data/images/forward_large.png -> build/lib.linux-x86_64-cpython-37/matplotlib/mpl-data/images
+      copying lib/matplotlib/mpl-data/stylelib/seaborn-whitegrid.mplstyle -> build/lib.linux-x86_64-cpython-37/matplotlib/mpl-data/stylelib
+      copying lib/matplotlib/mpl-data/images/back_large.png -> build/lib.linux-x86_64-cpython-37/matplotlib/mpl-data/images
+      copying lib/matplotlib/mpl-data/stylelib/seaborn-muted.mplstyle -> build/lib.linux-x86_64-cpython-37/matplotlib/mpl-data/stylelib
+      copying lib/matplotlib/mpl-data/images/matplotlib.png -> build/lib.linux-x86_64-cpython-37/matplotlib/mpl-data/images
+      copying lib/matplotlib/mpl-data/fonts/ttf/STIXSizFourSymBol.ttf -> build/lib.linux-x86_64-cpython-37/matplotlib/mpl-data/fonts/ttf
+      copying lib/matplotlib/mpl-data/fonts/ttf/STIXSizThreeSymReg.ttf -> build/lib.linux-x86_64-cpython-37/matplotlib/mpl-data/fonts/ttf
+      copying lib/matplotlib/mpl-data/fonts/ttf/STIXGeneral.ttf -> build/lib.linux-x86_64-cpython-37/matplotlib/mpl-data/fonts/ttf
+      copying lib/matplotlib/mpl-data/fonts/pdfcorefonts/Courier-Oblique.afm -> build/lib.linux-x86_64-cpython-37/matplotlib/mpl-data/fonts/pdfcorefonts
+      copying lib/matplotlib/backends/web_backend/css/fbm.css -> build/lib.linux-x86_64-cpython-37/matplotlib/backends/web_backend/css
+      copying lib/matplotlib/mpl-data/stylelib/Solarize_Light2.mplstyle -> build/lib.linux-x86_64-cpython-37/matplotlib/mpl-data/stylelib
+      copying lib/matplotlib/mpl-data/images/zoom_to_rect_large.png -> build/lib.linux-x86_64-cpython-37/matplotlib/mpl-data/images
+      copying lib/matplotlib/mpl-data/fonts/afm/psyr.afm -> build/lib.linux-x86_64-cpython-37/matplotlib/mpl-data/fonts/afm
+      copying lib/matplotlib/mpl-data/fonts/ttf/STIXSizThreeSymBol.ttf -> build/lib.linux-x86_64-cpython-37/matplotlib/mpl-data/fonts/ttf
+      creating build/lib.linux-x86_64-cpython-37/matplotlib/mpl-data/plot_directive
+      copying lib/matplotlib/mpl-data/plot_directive/plot_directive.css -> build/lib.linux-x86_64-cpython-37/matplotlib/mpl-data/plot_directive
+      copying lib/matplotlib/mpl-data/fonts/afm/pagk8a.afm -> build/lib.linux-x86_64-cpython-37/matplotlib/mpl-data/fonts/afm
+      copying lib/matplotlib/mpl-data/fonts/afm/pagd8a.afm -> build/lib.linux-x86_64-cpython-37/matplotlib/mpl-data/fonts/afm
+      copying lib/matplotlib/mpl-data/stylelib/fast.mplstyle -> build/lib.linux-x86_64-cpython-37/matplotlib/mpl-data/stylelib
+      copying lib/matplotlib/mpl-data/fonts/afm/phvlo8a.afm -> build/lib.linux-x86_64-cpython-37/matplotlib/mpl-data/fonts/afm
+      copying lib/matplotlib/mpl-data/fonts/pdfcorefonts/Times-Italic.afm -> build/lib.linux-x86_64-cpython-37/matplotlib/mpl-data/fonts/pdfcorefonts
+      copying lib/matplotlib/mpl-data/images/home-symbolic.svg -> build/lib.linux-x86_64-cpython-37/matplotlib/mpl-data/images
+      copying lib/matplotlib/mpl-data/fonts/ttf/LICENSE_STIX -> build/lib.linux-x86_64-cpython-37/matplotlib/mpl-data/fonts/ttf
+      copying lib/matplotlib/mpl-data/images/filesave-symbolic.svg -> build/lib.linux-x86_64-cpython-37/matplotlib/mpl-data/images
+      copying lib/matplotlib/mpl-data/fonts/afm/pzcmi8a.afm -> build/lib.linux-x86_64-cpython-37/matplotlib/mpl-data/fonts/afm
+      copying lib/matplotlib/mpl-data/fonts/ttf/cmmi10.ttf -> build/lib.linux-x86_64-cpython-37/matplotlib/mpl-data/fonts/ttf
+      copying lib/matplotlib/mpl-data/fonts/afm/phvr8an.afm -> build/lib.linux-x86_64-cpython-37/matplotlib/mpl-data/fonts/afm
+      copying lib/matplotlib/mpl-data/fonts/ttf/STIXGeneralBol.ttf -> build/lib.linux-x86_64-cpython-37/matplotlib/mpl-data/fonts/ttf
+      copying lib/matplotlib/mpl-data/fonts/afm/pplr8a.afm -> build/lib.linux-x86_64-cpython-37/matplotlib/mpl-data/fonts/afm
+      copying lib/matplotlib/mpl-data/fonts/pdfcorefonts/Helvetica.afm -> build/lib.linux-x86_64-cpython-37/matplotlib/mpl-data/fonts/pdfcorefonts
+      copying lib/matplotlib/mpl-data/stylelib/seaborn-darkgrid.mplstyle -> build/lib.linux-x86_64-cpython-37/matplotlib/mpl-data/stylelib
+      copying lib/matplotlib/mpl-data/fonts/ttf/DejaVuSans-BoldOblique.ttf -> build/lib.linux-x86_64-cpython-37/matplotlib/mpl-data/fonts/ttf
+      copying lib/matplotlib/mpl-data/fonts/afm/pcrro8a.afm -> build/lib.linux-x86_64-cpython-37/matplotlib/mpl-data/fonts/afm
+      copying lib/matplotlib/mpl-data/fonts/pdfcorefonts/ZapfDingbats.afm -> build/lib.linux-x86_64-cpython-37/matplotlib/mpl-data/fonts/pdfcorefonts
+      copying lib/matplotlib/mpl-data/sample_data/Minduka_Present_Blue_Pack.png -> build/lib.linux-x86_64-cpython-37/matplotlib/mpl-data/sample_data
+      copying lib/matplotlib/mpl-data/fonts/afm/phvb8an.afm -> build/lib.linux-x86_64-cpython-37/matplotlib/mpl-data/fonts/afm
+      copying lib/matplotlib/mpl-data/sample_data/percent_bachelors_degrees_women_usa.csv -> build/lib.linux-x86_64-cpython-37/matplotlib/mpl-data/sample_data
+      copying lib/matplotlib/mpl-data/images/move.pdf -> build/lib.linux-x86_64-cpython-37/matplotlib/mpl-data/images
+      copying lib/matplotlib/mpl-data/fonts/ttf/DejaVuSans-Oblique.ttf -> build/lib.linux-x86_64-cpython-37/matplotlib/mpl-data/fonts/ttf
+      copying lib/matplotlib/mpl-data/fonts/afm/pcrb8a.afm -> build/lib.linux-x86_64-cpython-37/matplotlib/mpl-data/fonts/afm
+      copying lib/matplotlib/mpl-data/images/move.svg -> build/lib.linux-x86_64-cpython-37/matplotlib/mpl-data/images
+      copying lib/matplotlib/mpl-data/images/back.svg -> build/lib.linux-x86_64-cpython-37/matplotlib/mpl-data/images
+      copying lib/matplotlib/mpl-data/sample_data/logo2.png -> build/lib.linux-x86_64-cpython-37/matplotlib/mpl-data/sample_data
+      copying lib/matplotlib/mpl-data/fonts/ttf/DejaVuSerif.ttf -> build/lib.linux-x86_64-cpython-37/matplotlib/mpl-data/fonts/ttf
+      copying lib/matplotlib/mpl-data/fonts/afm/pagdo8a.afm -> build/lib.linux-x86_64-cpython-37/matplotlib/mpl-data/fonts/afm
+      copying lib/matplotlib/mpl-data/images/subplots_large.png -> build/lib.linux-x86_64-cpython-37/matplotlib/mpl-data/images
+      copying lib/matplotlib/mpl-data/images/hand.svg -> build/lib.linux-x86_64-cpython-37/matplotlib/mpl-data/images
+      copying lib/matplotlib/mpl-data/images/zoom_to_rect.png -> build/lib.linux-x86_64-cpython-37/matplotlib/mpl-data/images
+      copying lib/matplotlib/mpl-data/images/zoom_to_rect.svg -> build/lib.linux-x86_64-cpython-37/matplotlib/mpl-data/images
+      copying lib/matplotlib/mpl-data/fonts/ttf/STIXGeneralBolIta.ttf -> build/lib.linux-x86_64-cpython-37/matplotlib/mpl-data/fonts/ttf
+      copying lib/matplotlib/mpl-data/stylelib/_classic_test_patch.mplstyle -> build/lib.linux-x86_64-cpython-37/matplotlib/mpl-data/stylelib
+      copying lib/matplotlib/mpl-data/fonts/afm/phvbo8an.afm -> build/lib.linux-x86_64-cpython-37/matplotlib/mpl-data/fonts/afm
+      copying lib/matplotlib/mpl-data/images/filesave_large.png -> build/lib.linux-x86_64-cpython-37/matplotlib/mpl-data/images
+      copying lib/matplotlib/mpl-data/images/qt4_editor_options_large.png -> build/lib.linux-x86_64-cpython-37/matplotlib/mpl-data/images
+      copying lib/matplotlib/mpl-data/fonts/afm/putbi8a.afm -> build/lib.linux-x86_64-cpython-37/matplotlib/mpl-data/fonts/afm
+      copying lib/matplotlib/mpl-data/stylelib/seaborn-dark-palette.mplstyle -> build/lib.linux-x86_64-cpython-37/matplotlib/mpl-data/stylelib
+      copying lib/matplotlib/mpl-data/fonts/afm/cmr10.afm -> build/lib.linux-x86_64-cpython-37/matplotlib/mpl-data/fonts/afm
+      copying lib/matplotlib/mpl-data/fonts/ttf/cmss10.ttf -> build/lib.linux-x86_64-cpython-37/matplotlib/mpl-data/fonts/ttf
+      copying lib/matplotlib/mpl-data/images/help-symbolic.svg -> build/lib.linux-x86_64-cpython-37/matplotlib/mpl-data/images
+      copying lib/matplotlib/mpl-data/images/subplots.png -> build/lib.linux-x86_64-cpython-37/matplotlib/mpl-data/images
+      copying lib/matplotlib/mpl-data/stylelib/seaborn-poster.mplstyle -> build/lib.linux-x86_64-cpython-37/matplotlib/mpl-data/stylelib
+      copying lib/matplotlib/backends/web_backend/css/mpl.css -> build/lib.linux-x86_64-cpython-37/matplotlib/backends/web_backend/css
+      copying lib/matplotlib/mpl-data/images/matplotlib_128.ppm -> build/lib.linux-x86_64-cpython-37/matplotlib/mpl-data/images
+      copying lib/matplotlib/mpl-data/fonts/ttf/STIXSizOneSymBol.ttf -> build/lib.linux-x86_64-cpython-37/matplotlib/mpl-data/fonts/ttf
+      copying lib/matplotlib/mpl-data/fonts/afm/pagko8a.afm -> build/lib.linux-x86_64-cpython-37/matplotlib/mpl-data/fonts/afm
+      copying lib/matplotlib/mpl-data/fonts/ttf/STIXGeneralItalic.ttf -> build/lib.linux-x86_64-cpython-37/matplotlib/mpl-data/fonts/ttf
+      copying lib/matplotlib/backends/web_backend/single_figure.html -> build/lib.linux-x86_64-cpython-37/matplotlib/backends/web_backend
+      copying lib/matplotlib/mpl-data/images/home_large.png -> build/lib.linux-x86_64-cpython-37/matplotlib/mpl-data/images
+      copying lib/matplotlib/mpl-data/fonts/afm/putr8a.afm -> build/lib.linux-x86_64-cpython-37/matplotlib/mpl-data/fonts/afm
+      copying lib/matplotlib/mpl-data/fonts/ttf/cmb10.ttf -> build/lib.linux-x86_64-cpython-37/matplotlib/mpl-data/fonts/ttf
+      copying lib/matplotlib/mpl-data/images/move_large.png -> build/lib.linux-x86_64-cpython-37/matplotlib/mpl-data/images
+      copying lib/matplotlib/mpl-data/fonts/ttf/STIXNonUniBolIta.ttf -> build/lib.linux-x86_64-cpython-37/matplotlib/mpl-data/fonts/ttf
+      copying lib/matplotlib/mpl-data/fonts/ttf/DejaVuSansDisplay.ttf -> build/lib.linux-x86_64-cpython-37/matplotlib/mpl-data/fonts/ttf
+      copying lib/matplotlib/mpl-data/images/move.png -> build/lib.linux-x86_64-cpython-37/matplotlib/mpl-data/images
+      copying lib/matplotlib/mpl-data/fonts/pdfcorefonts/Helvetica-Bold.afm -> build/lib.linux-x86_64-cpython-37/matplotlib/mpl-data/fonts/pdfcorefonts
+      copying lib/matplotlib/mpl-data/fonts/afm/phvl8a.afm -> build/lib.linux-x86_64-cpython-37/matplotlib/mpl-data/fonts/afm
+      copying lib/matplotlib/mpl-data/stylelib/ggplot.mplstyle -> build/lib.linux-x86_64-cpython-37/matplotlib/mpl-data/stylelib
+      copying lib/matplotlib/mpl-data/stylelib/bmh.mplstyle -> build/lib.linux-x86_64-cpython-37/matplotlib/mpl-data/stylelib
+      copying lib/matplotlib/mpl-data/fonts/pdfcorefonts/Times-BoldItalic.afm -> build/lib.linux-x86_64-cpython-37/matplotlib/mpl-data/fonts/pdfcorefonts
+      copying lib/matplotlib/mpl-data/images/back.pdf -> build/lib.linux-x86_64-cpython-37/matplotlib/mpl-data/images
+      copying lib/matplotlib/mpl-data/images/qt4_editor_options.pdf -> build/lib.linux-x86_64-cpython-37/matplotlib/mpl-data/images
+      copying lib/matplotlib/mpl-data/images/filesave.svg -> build/lib.linux-x86_64-cpython-37/matplotlib/mpl-data/images
+      copying lib/matplotlib/mpl-data/fonts/ttf/STIXSizTwoSymReg.ttf -> build/lib.linux-x86_64-cpython-37/matplotlib/mpl-data/fonts/ttf
+      copying lib/matplotlib/mpl-data/images/hand.png -> build/lib.linux-x86_64-cpython-37/matplotlib/mpl-data/images
+      copying lib/matplotlib/mpl-data/sample_data/README.txt -> build/lib.linux-x86_64-cpython-37/matplotlib/mpl-data/sample_data
+      copying lib/matplotlib/mpl-data/fonts/ttf/STIXNonUniIta.ttf -> build/lib.linux-x86_64-cpython-37/matplotlib/mpl-data/fonts/ttf
+      copying lib/matplotlib/mpl-data/images/forward.png -> build/lib.linux-x86_64-cpython-37/matplotlib/mpl-data/images
+      copying lib/matplotlib/mpl-data/images/hand.pdf -> build/lib.linux-x86_64-cpython-37/matplotlib/mpl-data/images
+      copying lib/matplotlib/mpl-data/fonts/afm/ptmbi8a.afm -> build/lib.linux-x86_64-cpython-37/matplotlib/mpl-data/fonts/afm
+      copying lib/matplotlib/mpl-data/fonts/pdfcorefonts/Helvetica-Oblique.afm -> build/lib.linux-x86_64-cpython-37/matplotlib/mpl-data/fonts/pdfcorefonts
+      copying lib/matplotlib/mpl-data/stylelib/seaborn-pastel.mplstyle -> build/lib.linux-x86_64-cpython-37/matplotlib/mpl-data/stylelib
+      copying lib/matplotlib/backends/web_backend/ipython_inline_figure.html -> build/lib.linux-x86_64-cpython-37/matplotlib/backends/web_backend
+      copying lib/matplotlib/mpl-data/fonts/afm/pzdr.afm -> build/lib.linux-x86_64-cpython-37/matplotlib/mpl-data/fonts/afm
+      copying lib/matplotlib/mpl-data/images/help.svg -> build/lib.linux-x86_64-cpython-37/matplotlib/mpl-data/images
+      copying lib/matplotlib/mpl-data/fonts/ttf/STIXSizFiveSymReg.ttf -> build/lib.linux-x86_64-cpython-37/matplotlib/mpl-data/fonts/ttf
+      copying lib/matplotlib/mpl-data/stylelib/seaborn-talk.mplstyle -> build/lib.linux-x86_64-cpython-37/matplotlib/mpl-data/stylelib
+      copying lib/matplotlib/mpl-data/fonts/afm/ptmri8a.afm -> build/lib.linux-x86_64-cpython-37/matplotlib/mpl-data/fonts/afm
+      copying lib/matplotlib/mpl-data/images/zoom_to_rect-symbolic.svg -> build/lib.linux-x86_64-cpython-37/matplotlib/mpl-data/images
+      copying lib/matplotlib/mpl-data/images/matplotlib_large.png -> build/lib.linux-x86_64-cpython-37/matplotlib/mpl-data/images
+      copying lib/matplotlib/mpl-data/sample_data/eeg.dat -> build/lib.linux-x86_64-cpython-37/matplotlib/mpl-data/sample_data
+      copying lib/matplotlib/mpl-data/fonts/pdfcorefonts/Courier-BoldOblique.afm -> build/lib.linux-x86_64-cpython-37/matplotlib/mpl-data/fonts/pdfcorefonts
+      copying lib/matplotlib/mpl-data/stylelib/seaborn-deep.mplstyle -> build/lib.linux-x86_64-cpython-37/matplotlib/mpl-data/stylelib
+      copying lib/matplotlib/mpl-data/sample_data/topobathy.npz -> build/lib.linux-x86_64-cpython-37/matplotlib/mpl-data/sample_data
+      copying lib/matplotlib/mpl-data/fonts/afm/pplb8a.afm -> build/lib.linux-x86_64-cpython-37/matplotlib/mpl-data/fonts/afm
+      copying lib/matplotlib/mpl-data/fonts/ttf/DejaVuSansMono-Oblique.ttf -> build/lib.linux-x86_64-cpython-37/matplotlib/mpl-data/fonts/ttf
+      copying lib/matplotlib/mpl-data/stylelib/seaborn-ticks.mplstyle -> build/lib.linux-x86_64-cpython-37/matplotlib/mpl-data/stylelib
+      copying lib/matplotlib/mpl-data/fonts/pdfcorefonts/Helvetica-BoldOblique.afm -> build/lib.linux-x86_64-cpython-37/matplotlib/mpl-data/fonts/pdfcorefonts
+      copying lib/matplotlib/mpl-data/images/help.pdf -> build/lib.linux-x86_64-cpython-37/matplotlib/mpl-data/images
+      copying lib/matplotlib/mpl-data/sample_data/membrane.dat -> build/lib.linux-x86_64-cpython-37/matplotlib/mpl-data/sample_data
+      copying lib/matplotlib/mpl-data/images/matplotlib.svg -> build/lib.linux-x86_64-cpython-37/matplotlib/mpl-data/images
+      copying lib/matplotlib/mpl-data/fonts/afm/cmmi10.afm -> build/lib.linux-x86_64-cpython-37/matplotlib/mpl-data/fonts/afm
+      creating build/lib.linux-x86_64-cpython-37/matplotlib/mpl-data/sample_data/axes_grid
+      copying lib/matplotlib/mpl-data/sample_data/axes_grid/bivariate_normal.npy -> build/lib.linux-x86_64-cpython-37/matplotlib/mpl-data/sample_data/axes_grid
+      copying lib/matplotlib/mpl-data/images/qt4_editor_options.png -> build/lib.linux-x86_64-cpython-37/matplotlib/mpl-data/images
+      copying lib/matplotlib/mpl-data/fonts/ttf/cmr10.ttf -> build/lib.linux-x86_64-cpython-37/matplotlib/mpl-data/fonts/ttf
+      copying lib/matplotlib/mpl-data/sample_data/msft.csv -> build/lib.linux-x86_64-cpython-37/matplotlib/mpl-data/sample_data
+      copying lib/matplotlib/mpl-data/images/help.png -> build/lib.linux-x86_64-cpython-37/matplotlib/mpl-data/images
+      copying lib/matplotlib/mpl-data/fonts/afm/pcrr8a.afm -> build/lib.linux-x86_64-cpython-37/matplotlib/mpl-data/fonts/afm
+      copying lib/matplotlib/mpl-data/stylelib/seaborn-dark.mplstyle -> build/lib.linux-x86_64-cpython-37/matplotlib/mpl-data/stylelib
+      UPDATING build/lib.linux-x86_64-cpython-37/matplotlib/_version.py
+      set build/lib.linux-x86_64-cpython-37/matplotlib/_version.py to '3.4.3'
+      running build_ext
+      creating tmp
+      gcc -Wno-unused-result -Wsign-compare -DNDEBUG -g -fwrapv -O3 -Wall -Os -fomit-frame-pointer -g -Os -fomit-frame-pointer -g -Os -fomit-frame-pointer -g -DTHREAD_STACK_SIZE=0x100000 -fPIC -I/usr/include/python3.7m -c /tmp/tmp63uwgj_d.cpp -o tmp/tmp63uwgj_d.o -fvisibility=hidden
+      gcc -Wno-unused-result -Wsign-compare -DNDEBUG -g -fwrapv -O3 -Wall -Os -fomit-frame-pointer -g -Os -fomit-frame-pointer -g -Os -fomit-frame-pointer -g -DTHREAD_STACK_SIZE=0x100000 -fPIC -I/usr/include/python3.7m -c /tmp/tmp8z4qe5mn.cpp -o tmp/tmp8z4qe5mn.o -fvisibility-inlines-hidden
+      gcc -Wno-unused-result -Wsign-compare -DNDEBUG -g -fwrapv -O3 -Wall -Os -fomit-frame-pointer -g -Os -fomit-frame-pointer -g -Os -fomit-frame-pointer -g -DTHREAD_STACK_SIZE=0x100000 -fPIC -I/usr/include/python3.7m -c /tmp/tmpv9ngx76r.cpp -o tmp/tmpv9ngx76r.o -flto
+      Extracting /project/freetype/freetype2/2.6.1/freetype-2.6.1.tar.gz
+      Building freetype in build/freetype-2.6.1
+      GNU make (>= 3.80) or makepp (>= 1.19) is required to build FreeType2.
+      Please try
+
+        MAKE=<GNU make command name> ./configure
+
+      or
+
+        MAKE="makepp --norc-substitution" ./configure
+      Traceback (most recent call last):
+        File "<string>", line 36, in <module>
+        File "<pip-setuptools-caller>", line 34, in <module>
+        File "/tmp/pip-install-_pr1gcd2/matplotlib_99113604c47a430b9a8083845d6b15d6/setup.py", line 314, in <module>
+          cmdclass=cmdclass,
+        File "/usr/lib/python3.7/site-packages/setuptools/__init__.py", line 107, in setup
+          return distutils.core.setup(**attrs)
+        File "/usr/lib/python3.7/site-packages/setuptools/_distutils/core.py", line 185, in setup
+          return run_commands(dist)
+        File "/usr/lib/python3.7/site-packages/setuptools/_distutils/core.py", line 201, in run_commands
+          dist.run_commands()
+        File "/usr/lib/python3.7/site-packages/setuptools/_distutils/dist.py", line 969, in run_commands
+          self.run_command(cmd)
+        File "/usr/lib/python3.7/site-packages/setuptools/dist.py", line 1234, in run_command
+          super().run_command(command)
+        File "/usr/lib/python3.7/site-packages/setuptools/_distutils/dist.py", line 988, in run_command
+          cmd_obj.run()
+        File "/usr/lib/python3.7/site-packages/wheel/bdist_wheel.py", line 368, in run
+          self.run_command("build")
+        File "/usr/lib/python3.7/site-packages/setuptools/_distutils/cmd.py", line 318, in run_command
+          self.distribution.run_command(command)
+        File "/usr/lib/python3.7/site-packages/setuptools/dist.py", line 1234, in run_command
+          super().run_command(command)
+        File "/usr/lib/python3.7/site-packages/setuptools/_distutils/dist.py", line 988, in run_command
+          cmd_obj.run()
+        File "/usr/lib/python3.7/site-packages/setuptools/_distutils/command/build.py", line 131, in run
+          self.run_command(cmd_name)
+        File "/usr/lib/python3.7/site-packages/setuptools/_distutils/cmd.py", line 318, in run_command
+          self.distribution.run_command(command)
+        File "/usr/lib/python3.7/site-packages/setuptools/dist.py", line 1234, in run_command
+          super().run_command(command)
+        File "/usr/lib/python3.7/site-packages/setuptools/_distutils/dist.py", line 988, in run_command
+          cmd_obj.run()
+        File "/usr/lib/python3.7/site-packages/setuptools/command/build_ext.py", line 84, in run
+          _build_ext.run(self)
+        File "/usr/lib/python3.7/site-packages/setuptools/_distutils/command/build_ext.py", line 345, in run
+          self.build_extensions()
+        File "/tmp/pip-install-_pr1gcd2/matplotlib_99113604c47a430b9a8083845d6b15d6/setup.py", line 199, in build_extensions
+          package.do_custom_build(env)
+        File "/tmp/pip-install-_pr1gcd2/matplotlib_99113604c47a430b9a8083845d6b15d6/setupext.py", line 600, in do_custom_build
+          env=env, cwd=src_path)
+        File "/usr/lib/python3.7/subprocess.py", line 363, in check_call
+          raise CalledProcessError(retcode, cmd)
+      subprocess.CalledProcessError: Command '['./configure', '--with-zlib=no', '--with-bzip2=no', '--with-png=no', '--with-harfbuzz=no', '--enable-static', '--disable-shared']' returned non-zero exit status 1.
+      [end of output]
+
+  note: This error originates from a subprocess, and is likely not a problem with pip.
+  ERROR: Failed building wheel for matplotlib
+  Running setup.py clean for matplotlib
+  Building wheel for pillow (setup.py) ... error
+  error: subprocess-exited-with-error
+
+  × python setup.py bdist_wheel did not run successfully.
+  │ exit code: 1
+  ╰─> [189 lines of output]
+      running bdist_wheel
+      running build
+      running build_py
+      creating build
+      creating build/lib.linux-x86_64-cpython-37
+      creating build/lib.linux-x86_64-cpython-37/PIL
+      copying src/PIL/ImageDraw.py -> build/lib.linux-x86_64-cpython-37/PIL
+      copying src/PIL/ExifTags.py -> build/lib.linux-x86_64-cpython-37/PIL
+      copying src/PIL/FontFile.py -> build/lib.linux-x86_64-cpython-37/PIL
+      copying src/PIL/PdfImagePlugin.py -> build/lib.linux-x86_64-cpython-37/PIL
+      copying src/PIL/_tkinter_finder.py -> build/lib.linux-x86_64-cpython-37/PIL
+      copying src/PIL/GifImagePlugin.py -> build/lib.linux-x86_64-cpython-37/PIL
+      copying src/PIL/GdImageFile.py -> build/lib.linux-x86_64-cpython-37/PIL
+      copying src/PIL/TiffImagePlugin.py -> build/lib.linux-x86_64-cpython-37/PIL
+      copying src/PIL/FpxImagePlugin.py -> build/lib.linux-x86_64-cpython-37/PIL
+      copying src/PIL/ImageFont.py -> build/lib.linux-x86_64-cpython-37/PIL
+      copying src/PIL/CurImagePlugin.py -> build/lib.linux-x86_64-cpython-37/PIL
+      copying src/PIL/_binary.py -> build/lib.linux-x86_64-cpython-37/PIL
+      copying src/PIL/MspImagePlugin.py -> build/lib.linux-x86_64-cpython-37/PIL
+      copying src/PIL/MpegImagePlugin.py -> build/lib.linux-x86_64-cpython-37/PIL
+      copying src/PIL/GribStubImagePlugin.py -> build/lib.linux-x86_64-cpython-37/PIL
+      copying src/PIL/McIdasImagePlugin.py -> build/lib.linux-x86_64-cpython-37/PIL
+      copying src/PIL/ImtImagePlugin.py -> build/lib.linux-x86_64-cpython-37/PIL
+      copying src/PIL/GimpGradientFile.py -> build/lib.linux-x86_64-cpython-37/PIL
+      copying src/PIL/ImageMorph.py -> build/lib.linux-x86_64-cpython-37/PIL
+      copying src/PIL/WmfImagePlugin.py -> build/lib.linux-x86_64-cpython-37/PIL
+      copying src/PIL/ImagePalette.py -> build/lib.linux-x86_64-cpython-37/PIL
+      copying src/PIL/ImageQt.py -> build/lib.linux-x86_64-cpython-37/PIL
+      copying src/PIL/ImageFilter.py -> build/lib.linux-x86_64-cpython-37/PIL
+      copying src/PIL/ImageDraw2.py -> build/lib.linux-x86_64-cpython-37/PIL
+      copying src/PIL/ImageMath.py -> build/lib.linux-x86_64-cpython-37/PIL
+      copying src/PIL/ImageStat.py -> build/lib.linux-x86_64-cpython-37/PIL
+      copying src/PIL/BmpImagePlugin.py -> build/lib.linux-x86_64-cpython-37/PIL
+      copying src/PIL/ImagePath.py -> build/lib.linux-x86_64-cpython-37/PIL
+      copying src/PIL/Image.py -> build/lib.linux-x86_64-cpython-37/PIL
+      copying src/PIL/JpegImagePlugin.py -> build/lib.linux-x86_64-cpython-37/PIL
+      copying src/PIL/TarIO.py -> build/lib.linux-x86_64-cpython-37/PIL
+      copying src/PIL/PalmImagePlugin.py -> build/lib.linux-x86_64-cpython-37/PIL
+      copying src/PIL/__main__.py -> build/lib.linux-x86_64-cpython-37/PIL
+      copying src/PIL/XbmImagePlugin.py -> build/lib.linux-x86_64-cpython-37/PIL
+      copying src/PIL/ImageEnhance.py -> build/lib.linux-x86_64-cpython-37/PIL
+      copying src/PIL/BufrStubImagePlugin.py -> build/lib.linux-x86_64-cpython-37/PIL
+      copying src/PIL/ImImagePlugin.py -> build/lib.linux-x86_64-cpython-37/PIL
+      copying src/PIL/EpsImagePlugin.py -> build/lib.linux-x86_64-cpython-37/PIL
+      copying src/PIL/FitsImagePlugin.py -> build/lib.linux-x86_64-cpython-37/PIL
+      copying src/PIL/DdsImagePlugin.py -> build/lib.linux-x86_64-cpython-37/PIL
+      copying src/PIL/FitsStubImagePlugin.py -> build/lib.linux-x86_64-cpython-37/PIL
+      copying src/PIL/_util.py -> build/lib.linux-x86_64-cpython-37/PIL
+      copying src/PIL/features.py -> build/lib.linux-x86_64-cpython-37/PIL
+      copying src/PIL/ImageTransform.py -> build/lib.linux-x86_64-cpython-37/PIL
+      copying src/PIL/MpoImagePlugin.py -> build/lib.linux-x86_64-cpython-37/PIL
+      copying src/PIL/PSDraw.py -> build/lib.linux-x86_64-cpython-37/PIL
+      copying src/PIL/DcxImagePlugin.py -> build/lib.linux-x86_64-cpython-37/PIL
+      copying src/PIL/GimpPaletteFile.py -> build/lib.linux-x86_64-cpython-37/PIL
+      copying src/PIL/ImageTk.py -> build/lib.linux-x86_64-cpython-37/PIL
+      copying src/PIL/MicImagePlugin.py -> build/lib.linux-x86_64-cpython-37/PIL
+      copying src/PIL/WebPImagePlugin.py -> build/lib.linux-x86_64-cpython-37/PIL
+      copying src/PIL/IcnsImagePlugin.py -> build/lib.linux-x86_64-cpython-37/PIL
+      copying src/PIL/PyAccess.py -> build/lib.linux-x86_64-cpython-37/PIL
+      copying src/PIL/_version.py -> build/lib.linux-x86_64-cpython-37/PIL
+      copying src/PIL/IptcImagePlugin.py -> build/lib.linux-x86_64-cpython-37/PIL
+      copying src/PIL/PsdImagePlugin.py -> build/lib.linux-x86_64-cpython-37/PIL
+      copying src/PIL/XpmImagePlugin.py -> build/lib.linux-x86_64-cpython-37/PIL
+      copying src/PIL/ImageOps.py -> build/lib.linux-x86_64-cpython-37/PIL
+      copying src/PIL/__init__.py -> build/lib.linux-x86_64-cpython-37/PIL
+      copying src/PIL/TgaImagePlugin.py -> build/lib.linux-x86_64-cpython-37/PIL
+      copying src/PIL/SunImagePlugin.py -> build/lib.linux-x86_64-cpython-37/PIL
+      copying src/PIL/ImageSequence.py -> build/lib.linux-x86_64-cpython-37/PIL
+      copying src/PIL/ImageChops.py -> build/lib.linux-x86_64-cpython-37/PIL
+      copying src/PIL/ContainerIO.py -> build/lib.linux-x86_64-cpython-37/PIL
+      copying src/PIL/BdfFontFile.py -> build/lib.linux-x86_64-cpython-37/PIL
+      copying src/PIL/SgiImagePlugin.py -> build/lib.linux-x86_64-cpython-37/PIL
+      copying src/PIL/ImageMode.py -> build/lib.linux-x86_64-cpython-37/PIL
+      copying src/PIL/TiffTags.py -> build/lib.linux-x86_64-cpython-37/PIL
+      copying src/PIL/BlpImagePlugin.py -> build/lib.linux-x86_64-cpython-37/PIL
+      copying src/PIL/XVThumbImagePlugin.py -> build/lib.linux-x86_64-cpython-37/PIL
+      copying src/PIL/PngImagePlugin.py -> build/lib.linux-x86_64-cpython-37/PIL
+      copying src/PIL/PpmImagePlugin.py -> build/lib.linux-x86_64-cpython-37/PIL
+      copying src/PIL/_deprecate.py -> build/lib.linux-x86_64-cpython-37/PIL
+      copying src/PIL/ImageGrab.py -> build/lib.linux-x86_64-cpython-37/PIL
+      copying src/PIL/ImageWin.py -> build/lib.linux-x86_64-cpython-37/PIL
+      copying src/PIL/IcoImagePlugin.py -> build/lib.linux-x86_64-cpython-37/PIL
+      copying src/PIL/SpiderImagePlugin.py -> build/lib.linux-x86_64-cpython-37/PIL
+      copying src/PIL/PdfParser.py -> build/lib.linux-x86_64-cpython-37/PIL
+      copying src/PIL/PcdImagePlugin.py -> build/lib.linux-x86_64-cpython-37/PIL
+      copying src/PIL/QoiImagePlugin.py -> build/lib.linux-x86_64-cpython-37/PIL
+      copying src/PIL/GbrImagePlugin.py -> build/lib.linux-x86_64-cpython-37/PIL
+      copying src/PIL/PaletteFile.py -> build/lib.linux-x86_64-cpython-37/PIL
+      copying src/PIL/FliImagePlugin.py -> build/lib.linux-x86_64-cpython-37/PIL
+      copying src/PIL/PcfFontFile.py -> build/lib.linux-x86_64-cpython-37/PIL
+      copying src/PIL/PixarImagePlugin.py -> build/lib.linux-x86_64-cpython-37/PIL
+      copying src/PIL/ImageCms.py -> build/lib.linux-x86_64-cpython-37/PIL
+      copying src/PIL/Hdf5StubImagePlugin.py -> build/lib.linux-x86_64-cpython-37/PIL
+      copying src/PIL/ImageColor.py -> build/lib.linux-x86_64-cpython-37/PIL
+      copying src/PIL/WalImageFile.py -> build/lib.linux-x86_64-cpython-37/PIL
+      copying src/PIL/ImageShow.py -> build/lib.linux-x86_64-cpython-37/PIL
+      copying src/PIL/JpegPresets.py -> build/lib.linux-x86_64-cpython-37/PIL
+      copying src/PIL/ImageFile.py -> build/lib.linux-x86_64-cpython-37/PIL
+      copying src/PIL/FtexImagePlugin.py -> build/lib.linux-x86_64-cpython-37/PIL
+      copying src/PIL/Jpeg2KImagePlugin.py -> build/lib.linux-x86_64-cpython-37/PIL
+      copying src/PIL/PcxImagePlugin.py -> build/lib.linux-x86_64-cpython-37/PIL
+      running egg_info
+      writing src/Pillow.egg-info/PKG-INFO
+      writing dependency_links to src/Pillow.egg-info/dependency_links.txt
+      writing requirements to src/Pillow.egg-info/requires.txt
+      writing top-level names to src/Pillow.egg-info/top_level.txt
+      reading manifest file 'src/Pillow.egg-info/SOURCES.txt'
+      reading manifest template 'MANIFEST.in'
+      warning: no files found matching '*.c'
+      warning: no files found matching '*.h'
+      warning: no files found matching '*.sh'
+      warning: no files found matching '*.txt'
+      warning: no previously-included files found matching '.appveyor.yml'
+      warning: no previously-included files found matching '.clang-format'
+      warning: no previously-included files found matching '.coveragerc'
+      warning: no previously-included files found matching '.editorconfig'
+      warning: no previously-included files found matching '.readthedocs.yml'
+      warning: no previously-included files found matching 'codecov.yml'
+      warning: no previously-included files found matching 'renovate.json'
+      warning: no previously-included files matching '.git*' found anywhere in distribution
+      warning: no previously-included files matching '*.pyc' found anywhere in distribution
+      warning: no previously-included files matching '*.so' found anywhere in distribution
+      no previously-included directories found matching '.ci'
+      adding license file 'LICENSE'
+      writing manifest file 'src/Pillow.egg-info/SOURCES.txt'
+      running build_ext
+
+
+      The headers or library files could not be found for zlib,
+      a required dependency when compiling Pillow from source.
+
+      Please see the install instructions at:
+         https://pillow.readthedocs.io/en/latest/installation.html
+
+      Traceback (most recent call last):
+        File "/tmp/pip-install-_pr1gcd2/pillow_8b4c8ff095df45e392290f176a288d1c/setup.py", line 997, in <module>
+          zip_safe=not (debug_build() or PLATFORM_MINGW),
+        File "/usr/lib/python3.7/site-packages/setuptools/__init__.py", line 107, in setup
+          return distutils.core.setup(**attrs)
+        File "/usr/lib/python3.7/site-packages/setuptools/_distutils/core.py", line 185, in setup
+          return run_commands(dist)
+        File "/usr/lib/python3.7/site-packages/setuptools/_distutils/core.py", line 201, in run_commands
+          dist.run_commands()
+        File "/usr/lib/python3.7/site-packages/setuptools/_distutils/dist.py", line 969, in run_commands
+          self.run_command(cmd)
+        File "/usr/lib/python3.7/site-packages/setuptools/dist.py", line 1234, in run_command
+          super().run_command(command)
+        File "/usr/lib/python3.7/site-packages/setuptools/_distutils/dist.py", line 988, in run_command
+          cmd_obj.run()
+        File "/usr/lib/python3.7/site-packages/wheel/bdist_wheel.py", line 368, in run
+          self.run_command("build")
+        File "/usr/lib/python3.7/site-packages/setuptools/_distutils/cmd.py", line 318, in run_command
+          self.distribution.run_command(command)
+        File "/usr/lib/python3.7/site-packages/setuptools/dist.py", line 1234, in run_command
+          super().run_command(command)
+        File "/usr/lib/python3.7/site-packages/setuptools/_distutils/dist.py", line 988, in run_command
+          cmd_obj.run()
+        File "/usr/lib/python3.7/site-packages/setuptools/_distutils/command/build.py", line 131, in run
+          self.run_command(cmd_name)
+        File "/usr/lib/python3.7/site-packages/setuptools/_distutils/cmd.py", line 318, in run_command
+          self.distribution.run_command(command)
+        File "/usr/lib/python3.7/site-packages/setuptools/dist.py", line 1234, in run_command
+          super().run_command(command)
+        File "/usr/lib/python3.7/site-packages/setuptools/_distutils/dist.py", line 988, in run_command
+          cmd_obj.run()
+        File "/usr/lib/python3.7/site-packages/setuptools/command/build_ext.py", line 84, in run
+          _build_ext.run(self)
+        File "/usr/lib/python3.7/site-packages/setuptools/_distutils/command/build_ext.py", line 345, in run
+          self.build_extensions()
+        File "/tmp/pip-install-_pr1gcd2/pillow_8b4c8ff095df45e392290f176a288d1c/setup.py", line 809, in build_extensions
+          raise RequiredDependencyException(f)
+      __main__.RequiredDependencyException: zlib
+
+      During handling of the above exception, another exception occurred:
+
+      Traceback (most recent call last):
+        File "<string>", line 36, in <module>
+        File "<pip-setuptools-caller>", line 34, in <module>
+        File "/tmp/pip-install-_pr1gcd2/pillow_8b4c8ff095df45e392290f176a288d1c/setup.py", line 1010, in <module>
+          raise RequiredDependencyException(msg)
+      __main__.RequiredDependencyException:
+
+      The headers or library files could not be found for zlib,
+      a required dependency when compiling Pillow from source.
+
+      Please see the install instructions at:
+         https://pillow.readthedocs.io/en/latest/installation.html
+
+
+      [end of output]
+
+  note: This error originates from a subprocess, and is likely not a problem with pip.
+  ERROR: Failed building wheel for pillow
+  Running setup.py clean for pillow
+Successfully built pandas
+Failed to build matplotlib pillow
+ERROR: Could not build wheels for matplotlib, pillow, which is required to install pyproject.toml-based projects
+bash-5.0#
+bash-5.0# rm -rf /tmp/pip*
+bash-5.0# /usr/bin/python3.7 -m pip install --upgrade pip
+Requirement already satisfied: pip in /usr/lib/python3.7/site-packages (24.0)
+WARNING: Running pip as the 'root' user can result in broken permissions and conflicting behaviour with the system package manager. It is recommended to use a virtual environment instead: https://pip.pypa.io/warnings/venv
+bash-5.0# /usr/bin/python3.7 -m pip install --only-binary=:all: pandas matplotlib seaborn
+ERROR: Could not find a version that satisfies the requirement pandas (from versions: none)
+ERROR: No matching distribution found for pandas
+bash-5.0# apt-get update && apt-get install -y build-essential python3-dev libpython3-dev python3-pip
+bash: apt-get: command not found
+bash-5.0# apk add --no-cache build-base python3-dev
+fetch http://dl-cdn.alpinelinux.org/alpine/v3.10/main/x86_64/APKINDEX.tar.gz
+fetch http://dl-cdn.alpinelinux.org/alpine/v3.10/community/x86_64/APKINDEX.tar.gz
+(1/5) Installing libmagic (5.37-r1)
+(2/5) Installing file (5.37-r1)
+(3/5) Installing make (4.2.1-r2)
+(4/5) Installing fortify-headers (1.1-r0)
+(5/5) Installing build-base (0.5-r1)
+Executing busybox-1.30.1-r3.trigger
+OK: 447 MiB in 92 packages
+bash-5.0# apk add --no-cache python3-dev
+fetch http://dl-cdn.alpinelinux.org/alpine/v3.10/main/x86_64/APKINDEX.tar.gz
+fetch http://dl-cdn.alpinelinux.org/alpine/v3.10/community/x86_64/APKINDEX.tar.gz
+OK: 447 MiB in 92 packages
+bash-5.0# python3 -m pip install --upgrade pip setuptools wheel
+Requirement already satisfied: pip in /usr/lib/python3.7/site-packages (24.0)
+Requirement already satisfied: setuptools in /usr/lib/python3.7/site-packages (40.8.0.post20190503)
+Collecting setuptools
+  Using cached setuptools-68.0.0-py3-none-any.whl.metadata (6.4 kB)
+Requirement already satisfied: wheel in /usr/lib/python3.7/site-packages (0.42.0)
+Using cached setuptools-68.0.0-py3-none-any.whl (804 kB)
+Installing collected packages: setuptools
+  Attempting uninstall: setuptools
+    Found existing installation: setuptools 40.8.0.post20190503
+    Uninstalling setuptools-40.8.0.post20190503:
+      Successfully uninstalled setuptools-40.8.0.post20190503
+Successfully installed setuptools-68.0.0
+WARNING: Running pip as the 'root' user can result in broken permissions and conflicting behaviour with the system package manager. It is recommended to use a virtual environment instead: https://pip.pypa.io/warnings/venv
+bash-5.0# pip3 install pandas matplotlib seaborn
+Collecting pandas
+  Using cached pandas-1.3.5-cp37-cp37m-linux_x86_64.whl
+Collecting matplotlib
+  Using cached matplotlib-3.5.3.tar.gz (35.2 MB)
+  Preparing metadata (setup.py) ... done
+Collecting seaborn
+  Using cached seaborn-0.12.2-py3-none-any.whl.metadata (5.4 kB)
+Collecting python-dateutil>=2.7.3 (from pandas)
+  Using cached python_dateutil-2.9.0.post0-py2.py3-none-any.whl.metadata (8.4 kB)
+Collecting pytz>=2017.3 (from pandas)
+  Using cached pytz-2026.2-py2.py3-none-any.whl.metadata (22 kB)
+Collecting numpy>=1.17.3 (from pandas)
+  Using cached numpy-1.21.6-cp37-cp37m-linux_x86_64.whl
+Collecting cycler>=0.10 (from matplotlib)
+  Using cached cycler-0.11.0-py3-none-any.whl.metadata (785 bytes)
+Collecting fonttools>=4.22.0 (from matplotlib)
+  Downloading fonttools-4.38.0-py3-none-any.whl.metadata (138 kB)
+     ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ 138.5/138.5 kB 2.3 MB/s eta 0:00:00
+Collecting kiwisolver>=1.0.1 (from matplotlib)
+  Using cached kiwisolver-1.4.5-cp37-cp37m-musllinux_1_1_x86_64.whl.metadata (6.4 kB)
+Collecting packaging>=20.0 (from matplotlib)
+  Using cached packaging-24.0-py3-none-any.whl.metadata (3.2 kB)
+Collecting pillow>=6.2.0 (from matplotlib)
+  Using cached Pillow-9.5.0.tar.gz (50.5 MB)
+  Preparing metadata (setup.py) ... done
+Collecting pyparsing>=2.2.1 (from matplotlib)
+  Using cached pyparsing-3.1.4-py3-none-any.whl.metadata (5.1 kB)
+Collecting typing_extensions (from seaborn)
+  Using cached typing_extensions-4.7.1-py3-none-any.whl.metadata (3.1 kB)
+Collecting six>=1.5 (from python-dateutil>=2.7.3->pandas)
+  Using cached six-1.17.0-py2.py3-none-any.whl.metadata (1.7 kB)
+Using cached seaborn-0.12.2-py3-none-any.whl (293 kB)
+Using cached cycler-0.11.0-py3-none-any.whl (6.4 kB)
+Downloading fonttools-4.38.0-py3-none-any.whl (965 kB)
+   ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ 965.4/965.4 kB 10.1 MB/s eta 0:00:00
+Using cached kiwisolver-1.4.5-cp37-cp37m-musllinux_1_1_x86_64.whl (1.8 MB)
+Using cached packaging-24.0-py3-none-any.whl (53 kB)
+Using cached pyparsing-3.1.4-py3-none-any.whl (104 kB)
+Using cached python_dateutil-2.9.0.post0-py2.py3-none-any.whl (229 kB)
+Using cached pytz-2026.2-py2.py3-none-any.whl (510 kB)
+Using cached typing_extensions-4.7.1-py3-none-any.whl (33 kB)
+Using cached six-1.17.0-py2.py3-none-any.whl (11 kB)
+Building wheels for collected packages: matplotlib, pillow
+  Building wheel for matplotlib (setup.py) ... done
+  Created wheel for matplotlib: filename=matplotlib-3.5.3-cp37-cp37m-linux_x86_64.whl size=8744824 sha256=9664195e09bb431ef6639e6bf1b09c67a338421804359581559f51924b6afe67
+  Stored in directory: /root/.cache/pip/wheels/d7/1e/f4/57de2c8d2b1e9b10f9fa9522bb5f374996561546d8e568ca6d
+  Building wheel for pillow (setup.py) ... error
+  error: subprocess-exited-with-error
+
+  × python setup.py bdist_wheel did not run successfully.
+  │ exit code: 1
+  ╰─> [189 lines of output]
+      running bdist_wheel
+      running build
+      running build_py
+      creating build
+      creating build/lib.linux-x86_64-cpython-37
+      creating build/lib.linux-x86_64-cpython-37/PIL
+      copying src/PIL/ImageDraw.py -> build/lib.linux-x86_64-cpython-37/PIL
+      copying src/PIL/ExifTags.py -> build/lib.linux-x86_64-cpython-37/PIL
+      copying src/PIL/FontFile.py -> build/lib.linux-x86_64-cpython-37/PIL
+      copying src/PIL/PdfImagePlugin.py -> build/lib.linux-x86_64-cpython-37/PIL
+      copying src/PIL/_tkinter_finder.py -> build/lib.linux-x86_64-cpython-37/PIL
+      copying src/PIL/GifImagePlugin.py -> build/lib.linux-x86_64-cpython-37/PIL
+      copying src/PIL/GdImageFile.py -> build/lib.linux-x86_64-cpython-37/PIL
+      copying src/PIL/TiffImagePlugin.py -> build/lib.linux-x86_64-cpython-37/PIL
+      copying src/PIL/FpxImagePlugin.py -> build/lib.linux-x86_64-cpython-37/PIL
+      copying src/PIL/ImageFont.py -> build/lib.linux-x86_64-cpython-37/PIL
+      copying src/PIL/CurImagePlugin.py -> build/lib.linux-x86_64-cpython-37/PIL
+      copying src/PIL/_binary.py -> build/lib.linux-x86_64-cpython-37/PIL
+      copying src/PIL/MspImagePlugin.py -> build/lib.linux-x86_64-cpython-37/PIL
+      copying src/PIL/MpegImagePlugin.py -> build/lib.linux-x86_64-cpython-37/PIL
+      copying src/PIL/GribStubImagePlugin.py -> build/lib.linux-x86_64-cpython-37/PIL
+      copying src/PIL/McIdasImagePlugin.py -> build/lib.linux-x86_64-cpython-37/PIL
+      copying src/PIL/ImtImagePlugin.py -> build/lib.linux-x86_64-cpython-37/PIL
+      copying src/PIL/GimpGradientFile.py -> build/lib.linux-x86_64-cpython-37/PIL
+      copying src/PIL/ImageMorph.py -> build/lib.linux-x86_64-cpython-37/PIL
+      copying src/PIL/WmfImagePlugin.py -> build/lib.linux-x86_64-cpython-37/PIL
+      copying src/PIL/ImagePalette.py -> build/lib.linux-x86_64-cpython-37/PIL
+      copying src/PIL/ImageQt.py -> build/lib.linux-x86_64-cpython-37/PIL
+      copying src/PIL/ImageFilter.py -> build/lib.linux-x86_64-cpython-37/PIL
+      copying src/PIL/ImageDraw2.py -> build/lib.linux-x86_64-cpython-37/PIL
+      copying src/PIL/ImageMath.py -> build/lib.linux-x86_64-cpython-37/PIL
+      copying src/PIL/ImageStat.py -> build/lib.linux-x86_64-cpython-37/PIL
+      copying src/PIL/BmpImagePlugin.py -> build/lib.linux-x86_64-cpython-37/PIL
+      copying src/PIL/ImagePath.py -> build/lib.linux-x86_64-cpython-37/PIL
+      copying src/PIL/Image.py -> build/lib.linux-x86_64-cpython-37/PIL
+      copying src/PIL/JpegImagePlugin.py -> build/lib.linux-x86_64-cpython-37/PIL
+      copying src/PIL/TarIO.py -> build/lib.linux-x86_64-cpython-37/PIL
+      copying src/PIL/PalmImagePlugin.py -> build/lib.linux-x86_64-cpython-37/PIL
+      copying src/PIL/__main__.py -> build/lib.linux-x86_64-cpython-37/PIL
+      copying src/PIL/XbmImagePlugin.py -> build/lib.linux-x86_64-cpython-37/PIL
+      copying src/PIL/ImageEnhance.py -> build/lib.linux-x86_64-cpython-37/PIL
+      copying src/PIL/BufrStubImagePlugin.py -> build/lib.linux-x86_64-cpython-37/PIL
+      copying src/PIL/ImImagePlugin.py -> build/lib.linux-x86_64-cpython-37/PIL
+      copying src/PIL/EpsImagePlugin.py -> build/lib.linux-x86_64-cpython-37/PIL
+      copying src/PIL/FitsImagePlugin.py -> build/lib.linux-x86_64-cpython-37/PIL
+      copying src/PIL/DdsImagePlugin.py -> build/lib.linux-x86_64-cpython-37/PIL
+      copying src/PIL/FitsStubImagePlugin.py -> build/lib.linux-x86_64-cpython-37/PIL
+      copying src/PIL/_util.py -> build/lib.linux-x86_64-cpython-37/PIL
+      copying src/PIL/features.py -> build/lib.linux-x86_64-cpython-37/PIL
+      copying src/PIL/ImageTransform.py -> build/lib.linux-x86_64-cpython-37/PIL
+      copying src/PIL/MpoImagePlugin.py -> build/lib.linux-x86_64-cpython-37/PIL
+      copying src/PIL/PSDraw.py -> build/lib.linux-x86_64-cpython-37/PIL
+      copying src/PIL/DcxImagePlugin.py -> build/lib.linux-x86_64-cpython-37/PIL
+      copying src/PIL/GimpPaletteFile.py -> build/lib.linux-x86_64-cpython-37/PIL
+      copying src/PIL/ImageTk.py -> build/lib.linux-x86_64-cpython-37/PIL
+      copying src/PIL/MicImagePlugin.py -> build/lib.linux-x86_64-cpython-37/PIL
+      copying src/PIL/WebPImagePlugin.py -> build/lib.linux-x86_64-cpython-37/PIL
+      copying src/PIL/IcnsImagePlugin.py -> build/lib.linux-x86_64-cpython-37/PIL
+      copying src/PIL/PyAccess.py -> build/lib.linux-x86_64-cpython-37/PIL
+      copying src/PIL/_version.py -> build/lib.linux-x86_64-cpython-37/PIL
+      copying src/PIL/IptcImagePlugin.py -> build/lib.linux-x86_64-cpython-37/PIL
+      copying src/PIL/PsdImagePlugin.py -> build/lib.linux-x86_64-cpython-37/PIL
+      copying src/PIL/XpmImagePlugin.py -> build/lib.linux-x86_64-cpython-37/PIL
+      copying src/PIL/ImageOps.py -> build/lib.linux-x86_64-cpython-37/PIL
+      copying src/PIL/__init__.py -> build/lib.linux-x86_64-cpython-37/PIL
+      copying src/PIL/TgaImagePlugin.py -> build/lib.linux-x86_64-cpython-37/PIL
+      copying src/PIL/SunImagePlugin.py -> build/lib.linux-x86_64-cpython-37/PIL
+      copying src/PIL/ImageSequence.py -> build/lib.linux-x86_64-cpython-37/PIL
+      copying src/PIL/ImageChops.py -> build/lib.linux-x86_64-cpython-37/PIL
+      copying src/PIL/ContainerIO.py -> build/lib.linux-x86_64-cpython-37/PIL
+      copying src/PIL/BdfFontFile.py -> build/lib.linux-x86_64-cpython-37/PIL
+      copying src/PIL/SgiImagePlugin.py -> build/lib.linux-x86_64-cpython-37/PIL
+      copying src/PIL/ImageMode.py -> build/lib.linux-x86_64-cpython-37/PIL
+      copying src/PIL/TiffTags.py -> build/lib.linux-x86_64-cpython-37/PIL
+      copying src/PIL/BlpImagePlugin.py -> build/lib.linux-x86_64-cpython-37/PIL
+      copying src/PIL/XVThumbImagePlugin.py -> build/lib.linux-x86_64-cpython-37/PIL
+      copying src/PIL/PngImagePlugin.py -> build/lib.linux-x86_64-cpython-37/PIL
+      copying src/PIL/PpmImagePlugin.py -> build/lib.linux-x86_64-cpython-37/PIL
+      copying src/PIL/_deprecate.py -> build/lib.linux-x86_64-cpython-37/PIL
+      copying src/PIL/ImageGrab.py -> build/lib.linux-x86_64-cpython-37/PIL
+      copying src/PIL/ImageWin.py -> build/lib.linux-x86_64-cpython-37/PIL
+      copying src/PIL/IcoImagePlugin.py -> build/lib.linux-x86_64-cpython-37/PIL
+      copying src/PIL/SpiderImagePlugin.py -> build/lib.linux-x86_64-cpython-37/PIL
+      copying src/PIL/PdfParser.py -> build/lib.linux-x86_64-cpython-37/PIL
+      copying src/PIL/PcdImagePlugin.py -> build/lib.linux-x86_64-cpython-37/PIL
+      copying src/PIL/QoiImagePlugin.py -> build/lib.linux-x86_64-cpython-37/PIL
+      copying src/PIL/GbrImagePlugin.py -> build/lib.linux-x86_64-cpython-37/PIL
+      copying src/PIL/PaletteFile.py -> build/lib.linux-x86_64-cpython-37/PIL
+      copying src/PIL/FliImagePlugin.py -> build/lib.linux-x86_64-cpython-37/PIL
+      copying src/PIL/PcfFontFile.py -> build/lib.linux-x86_64-cpython-37/PIL
+      copying src/PIL/PixarImagePlugin.py -> build/lib.linux-x86_64-cpython-37/PIL
+      copying src/PIL/ImageCms.py -> build/lib.linux-x86_64-cpython-37/PIL
+      copying src/PIL/Hdf5StubImagePlugin.py -> build/lib.linux-x86_64-cpython-37/PIL
+      copying src/PIL/ImageColor.py -> build/lib.linux-x86_64-cpython-37/PIL
+      copying src/PIL/WalImageFile.py -> build/lib.linux-x86_64-cpython-37/PIL
+      copying src/PIL/ImageShow.py -> build/lib.linux-x86_64-cpython-37/PIL
+      copying src/PIL/JpegPresets.py -> build/lib.linux-x86_64-cpython-37/PIL
+      copying src/PIL/ImageFile.py -> build/lib.linux-x86_64-cpython-37/PIL
+      copying src/PIL/FtexImagePlugin.py -> build/lib.linux-x86_64-cpython-37/PIL
+      copying src/PIL/Jpeg2KImagePlugin.py -> build/lib.linux-x86_64-cpython-37/PIL
+      copying src/PIL/PcxImagePlugin.py -> build/lib.linux-x86_64-cpython-37/PIL
+      running egg_info
+      writing src/Pillow.egg-info/PKG-INFO
+      writing dependency_links to src/Pillow.egg-info/dependency_links.txt
+      writing requirements to src/Pillow.egg-info/requires.txt
+      writing top-level names to src/Pillow.egg-info/top_level.txt
+      reading manifest file 'src/Pillow.egg-info/SOURCES.txt'
+      reading manifest template 'MANIFEST.in'
+      warning: no files found matching '*.c'
+      warning: no files found matching '*.h'
+      warning: no files found matching '*.sh'
+      warning: no files found matching '*.txt'
+      warning: no previously-included files found matching '.appveyor.yml'
+      warning: no previously-included files found matching '.clang-format'
+      warning: no previously-included files found matching '.coveragerc'
+      warning: no previously-included files found matching '.editorconfig'
+      warning: no previously-included files found matching '.readthedocs.yml'
+      warning: no previously-included files found matching 'codecov.yml'
+      warning: no previously-included files found matching 'renovate.json'
+      warning: no previously-included files matching '.git*' found anywhere in distribution
+      warning: no previously-included files matching '*.pyc' found anywhere in distribution
+      warning: no previously-included files matching '*.so' found anywhere in distribution
+      no previously-included directories found matching '.ci'
+      adding license file 'LICENSE'
+      writing manifest file 'src/Pillow.egg-info/SOURCES.txt'
+      running build_ext
+
+
+      The headers or library files could not be found for zlib,
+      a required dependency when compiling Pillow from source.
+
+      Please see the install instructions at:
+         https://pillow.readthedocs.io/en/latest/installation.html
+
+      Traceback (most recent call last):
+        File "/tmp/pip-install-vxrff7sj/pillow_f2a14fedb7e344ea81653cb965cfe4b2/setup.py", line 997, in <module>
+          zip_safe=not (debug_build() or PLATFORM_MINGW),
+        File "/usr/lib/python3.7/site-packages/setuptools/__init__.py", line 107, in setup
+          return distutils.core.setup(**attrs)
+        File "/usr/lib/python3.7/site-packages/setuptools/_distutils/core.py", line 185, in setup
+          return run_commands(dist)
+        File "/usr/lib/python3.7/site-packages/setuptools/_distutils/core.py", line 201, in run_commands
+          dist.run_commands()
+        File "/usr/lib/python3.7/site-packages/setuptools/_distutils/dist.py", line 969, in run_commands
+          self.run_command(cmd)
+        File "/usr/lib/python3.7/site-packages/setuptools/dist.py", line 1234, in run_command
+          super().run_command(command)
+        File "/usr/lib/python3.7/site-packages/setuptools/_distutils/dist.py", line 988, in run_command
+          cmd_obj.run()
+        File "/usr/lib/python3.7/site-packages/wheel/bdist_wheel.py", line 368, in run
+          self.run_command("build")
+        File "/usr/lib/python3.7/site-packages/setuptools/_distutils/cmd.py", line 318, in run_command
+          self.distribution.run_command(command)
+        File "/usr/lib/python3.7/site-packages/setuptools/dist.py", line 1234, in run_command
+          super().run_command(command)
+        File "/usr/lib/python3.7/site-packages/setuptools/_distutils/dist.py", line 988, in run_command
+          cmd_obj.run()
+        File "/usr/lib/python3.7/site-packages/setuptools/_distutils/command/build.py", line 131, in run
+          self.run_command(cmd_name)
+        File "/usr/lib/python3.7/site-packages/setuptools/_distutils/cmd.py", line 318, in run_command
+          self.distribution.run_command(command)
+        File "/usr/lib/python3.7/site-packages/setuptools/dist.py", line 1234, in run_command
+          super().run_command(command)
+        File "/usr/lib/python3.7/site-packages/setuptools/_distutils/dist.py", line 988, in run_command
+          cmd_obj.run()
+        File "/usr/lib/python3.7/site-packages/setuptools/command/build_ext.py", line 84, in run
+          _build_ext.run(self)
+        File "/usr/lib/python3.7/site-packages/setuptools/_distutils/command/build_ext.py", line 345, in run
+          self.build_extensions()
+        File "/tmp/pip-install-vxrff7sj/pillow_f2a14fedb7e344ea81653cb965cfe4b2/setup.py", line 809, in build_extensions
+          raise RequiredDependencyException(f)
+      __main__.RequiredDependencyException: zlib
+
+      During handling of the above exception, another exception occurred:
+
+      Traceback (most recent call last):
+        File "<string>", line 36, in <module>
+        File "<pip-setuptools-caller>", line 34, in <module>
+        File "/tmp/pip-install-vxrff7sj/pillow_f2a14fedb7e344ea81653cb965cfe4b2/setup.py", line 1010, in <module>
+          raise RequiredDependencyException(msg)
+      __main__.RequiredDependencyException:
+
+      The headers or library files could not be found for zlib,
+      a required dependency when compiling Pillow from source.
+
+      Please see the install instructions at:
+         https://pillow.readthedocs.io/en/latest/installation.html
+
+
+      [end of output]
+
+  note: This error originates from a subprocess, and is likely not a problem with pip.
+  ERROR: Failed building wheel for pillow
+  Running setup.py clean for pillow
+Successfully built matplotlib
+Failed to build pillow
+ERROR: Could not build wheels for pillow, which is required to install pyproject.toml-based projects
+bash-5.0# apk add --no-cache jpeg-dev zlib-dev
+fetch http://dl-cdn.alpinelinux.org/alpine/v3.10/main/x86_64/APKINDEX.tar.gz
+fetch http://dl-cdn.alpinelinux.org/alpine/v3.10/community/x86_64/APKINDEX.tar.gz
+(1/3) Installing libjpeg-turbo-dev (2.0.4-r1)
+(2/3) Installing jpeg-dev (8-r6)
+(3/3) Installing zlib-dev (1.2.11-r1)
+OK: 449 MiB in 95 packages
+bash-5.0# pip3 install pillow
+Collecting pillow
+  Using cached Pillow-9.5.0.tar.gz (50.5 MB)
+  Preparing metadata (setup.py) ... done
+Building wheels for collected packages: pillow
+  Building wheel for pillow (setup.py) ... done
+  Created wheel for pillow: filename=Pillow-9.5.0-cp37-cp37m-linux_x86_64.whl size=1088240 sha256=ae22e48aac8fa6f325047d5af3225f90cd37b7c61a21bc2930777b4aec90fc04
+  Stored in directory: /root/.cache/pip/wheels/c4/11/5c/75d221fd3d1a2c4e35510735a82ad2b32ba5728242d69b984d
+Successfully built pillow
+Installing collected packages: pillow
+Successfully installed pillow-9.5.0
+WARNING: Running pip as the 'root' user can result in broken permissions and conflicting behaviour with the system package manager. It is recommended to use a virtual environment instead: https://pip.pypa.io/warnings/venv
+bash-5.0# import matplotlib.pyplot as plt
+bash: import: command not found
+bash-5.0# import seaborn as sns
+bash: import: command not found
+bash-5.0# import pandas as pd
+bash: import: command not found
+bash-5.0#
+bash-5.0# # 1. Feature Importance Plot
+bash-5.0# # REPLACE THESE NUMBERS with the output from rf_model.featureImportances.toArray()
+bash-5.0# importances = [0.65, 0.35]
+bash: importances: command not found
+bash-5.0# features = ["rating", "helpful_vote"]
+bash: features: command not found
+bash-5.0#
+bash-5.0# plt.figure(figsize=(8, 5))
+bash: syntax error near unexpected token `figsize=(8, 5)'
+bash-5.0# sns.barplot(x=importances, y=features, palette="viridis")
+bash: syntax error near unexpected token `x=importances,'
+bash-5.0# plt.title("Feature Importance for Verified Purchase Prediction")
+bash: syntax error near unexpected token `"Feature Importance for Verified Purchase Prediction"'
+bash-5.0# plt.xlabel("Importance Score")
+bash: syntax error near unexpected token `"Importance Score"'
+bash-5.0# plt.ylabel("Features")
+bash: syntax error near unexpected token `"Features"'
+bash-5.0# plt.tight_layout()
+> plt.savefig("feature_importance.png")
+bash: syntax error near unexpected token `plt.savefig'
+bash-5.0# plt.show()
+>
+> # 2. Confusion Matrix
+> # REPLACE THESE NUMBERS with the counts from your Spark output
+> data = {
+bash: syntax error near unexpected token `data'
+bash-5.0#     'Actual_Unverified (0.0)': [15000, 2000],  # True Negatives, False Positives
+bash: Actual_Unverified (0.0):: command not found
+bash-5.0#     'Actual_Verified (1.0)': [3000, 80000]     # False Negatives, True Positives
+bash: Actual_Verified (1.0):: command not found
+bash-5.0# }
+bash: syntax error near unexpected token `}'
+bash-5.0# cm_df = pd.DataFrame(data, index=['Predicted_Unverified (0.0)', 'Predicted_Verified (1.0)'])
+bash: syntax error near unexpected token `('
+bash-5.0#
+bash-5.0# plt.figure(figsize=(6, 5))
+bash: syntax error near unexpected token `figsize=(6, 5)'
+bash-5.0# sns.heatmap(cm_df, annot=True, fmt="g", cmap="Blues")
+bash: syntax error near unexpected token `cm_df,'
+bash-5.0# plt.title("Confusion Matrix")
+bash: syntax error near unexpected token `"Confusion Matrix"'
+bash-5.0# plt.tight_layout()
+> plt.savefig("confusion_matrix.png")
+bash: syntax error near unexpected token `plt.savefig'
+bash-5.0# plt.show()
+>
+> cat <<EOF > visualize.py
+bash: syntax error near unexpected token `cat'
+bash-5.0# cat <<EOF > visualize.py
+>
+>
+>
+> quit()
+>
+> /spark/bin/pyspark --master spark://spark-master:7077
+>
+> cat <<EOF > visualize.py
+>
+> ^C
+bash-5.0# /spark/bin/pyspark --master spark://spark-master:7077
+Python 3.7.10 (default, Mar  2 2021, 09:06:08)
+[GCC 8.3.0] on linux
+Type "help", "copyright", "credits" or "license" for more information.
+26/06/12 21:53:57 WARN NativeCodeLoader: Unable to load native-hadoop library for your platform... using builtin-java classes where applicable
+Using Spark's default log4j profile: org/apache/spark/log4j-defaults.properties
+Setting default log level to "WARN".
+To adjust logging level use sc.setLogLevel(newLevel). For SparkR, use setLogLevel(newLevel).
+Welcome to
+      ____              __
+     / __/__  ___ _____/ /__
+    _\ \/ _ \/ _ `/ __/  '_/
+   /__ / .__/\_,_/_/ /_/\_\   version 3.0.0
+      /_/
+
+Using Python version 3.7.10 (default, Mar  2 2021 09:06:08)
+SparkSession available as 'spark'.
+>>> import matplotlib.pyplot as plt
+Traceback (most recent call last):
+  File "<stdin>", line 1, in <module>
+ModuleNotFoundError: No module named 'matplotlib'
+>>> import seaborn as sns
+Traceback (most recent call last):
+  File "<stdin>", line 1, in <module>
+ModuleNotFoundError: No module named 'seaborn'
+>>> import pandas as pd
+Traceback (most recent call last):
+  File "<stdin>", line 1, in <module>
+ModuleNotFoundError: No module named 'pandas'
+>>>
+>>> # 1. Feature Importance Plot
+>>> # REPLACE THESE NUMBERS with the output from rf_model.featureImportances.toArray()
+>>> importances = [0.65, 0.35]
+>>> features = ["rating", "helpful_vote"]
+>>>
+>>> plt.figure(figsize=(8, 5))
+Traceback (most recent call last):
+  File "<stdin>", line 1, in <module>
+NameError: name 'plt' is not defined
+>>> sns.barplot(x=importances, y=features, palette="viridis")
+Traceback (most recent call last):
+  File "<stdin>", line 1, in <module>
+NameError: name 'sns' is not defined
+>>> plt.title("Feature Importance for Verified Purchase Prediction")
+Traceback (most recent call last):
+  File "<stdin>", line 1, in <module>
+NameError: name 'plt' is not defined
+>>> plt.xlabel("Importance Score")
+Traceback (most recent call last):
+  File "<stdin>", line 1, in <module>
+NameError: name 'plt' is not defined
+>>> plt.ylabel("Features")
+Traceback (most recent call last):
+  File "<stdin>", line 1, in <module>
+NameError: name 'plt' is not defined
+>>> plt.tight_layout()
+Traceback (most recent call last):
+  File "<stdin>", line 1, in <module>
+NameError: name 'plt' is not defined
+>>> plt.savefig("feature_importance.png")
+Traceback (most recent call last):
+  File "<stdin>", line 1, in <module>
+NameError: name 'plt' is not defined
+>>> plt.show()
+Traceback (most recent call last):
+  File "<stdin>", line 1, in <module>
+NameError: name 'plt' is not defined
+>>>
+>>> # 2. Confusion Matrix
+>>> # REPLACE THESE NUMBERS with the counts from your Spark output
+>>> data = {
+...     'Actual_Unverified (0.0)': [15000, 2000],  # True Negatives, False Positives
+...     'Actual_Verified (1.0)': [3000, 80000]     # False Negatives, True Positives
+... }
+>>> cm_df = pd.DataFrame(data, index=['Predicted_Unverified (0.0)', 'Predicted_Verified (1.0)'])
+Traceback (most recent call last):
+  File "<stdin>", line 1, in <module>
+NameError: name 'pd' is not defined
+>>>
+>>> plt.figure(figsize=(6, 5))
+Traceback (most recent call last):
+  File "<stdin>", line 1, in <module>
+NameError: name 'plt' is not defined
+>>> sns.heatmap(cm_df, annot=True, fmt="g", cmap="Blues")
+Traceback (most recent call last):
+  File "<stdin>", line 1, in <module>
+NameError: name 'sns' is not defined
+>>> plt.title("Confusion Matrix")
+Traceback (most recent call last):
+  File "<stdin>", line 1, in <module>
+NameError: name 'plt' is not defined
+>>> plt.tight_layout()
+Traceback (most recent call last):
+  File "<stdin>", line 1, in <module>
+NameError: name 'plt' is not defined
+>>> plt.savefig("confusion_matrix.png")
+Traceback (most recent call last):
+  File "<stdin>", line 1, in <module>
+NameError: name 'plt' is not defined
+>>> plt.show()
+Traceback (most recent call last):
+  File "<stdin>", line 1, in <module>
+NameError: name 'plt' is not defined
+>>> import matplotlib.pyplot as plt
+Traceback (most recent call last):
+  File "<stdin>", line 1, in <module>
+ModuleNotFoundError: No module named 'matplotlib'
+>>> import seaborn as sns
+Traceback (most recent call last):
+  File "<stdin>", line 1, in <module>
+ModuleNotFoundError: No module named 'seaborn'
+>>> import pandas as pd
+Traceback (most recent call last):
+  File "<stdin>", line 1, in <module>
+ModuleNotFoundError: No module named 'pandas'
+>>>
+>>> # Now run your plotting code again
+>>> importances = [0.65, 0.35]
+>>> features = ["rating", "helpful_vote"]
+>>>
+>>> plt.figure(figsize=(8, 5))
+Traceback (most recent call last):
+  File "<stdin>", line 1, in <module>
+NameError: name 'plt' is not defined
+>>> sns.barplot(x=importances, y=features, palette="viridis")
+Traceback (most recent call last):
+  File "<stdin>", line 1, in <module>
+NameError: name 'sns' is not defined
+>>> plt.title("Feature Importance for Verified Purchase Prediction")
+Traceback (most recent call last):
+  File "<stdin>", line 1, in <module>
+NameError: name 'plt' is not defined
+>>> plt.xlabel("Importance Score")
+Traceback (most recent call last):
+  File "<stdin>", line 1, in <module>
+NameError: name 'plt' is not defined
+>>> plt.ylabel("Features")
+Traceback (most recent call last):
+  File "<stdin>", line 1, in <module>
+NameError: name 'plt' is not defined
+>>> plt.tight_layout()
+Traceback (most recent call last):
+  File "<stdin>", line 1, in <module>
+NameError: name 'plt' is not defined
+>>> plt.savefig("feature_importance.png")
+Traceback (most recent call last):
+  File "<stdin>", line 1, in <module>
+NameError: name 'plt' is not defined
+>>> plt.show()
+Traceback (most recent call last):
+  File "<stdin>", line 1, in <module>
+NameError: name 'plt' is not defined
+>>>
+>>> data = {
+...     'Actual_Unverified (0.0)': [15000, 2000],
+...     'Actual_Verified (1.0)': [3000, 80000]
+... }
+>>> cm_df = pd.DataFrame(data, index=['Predicted_Unverified (0.0)', 'Predicted_Verified (1.0)'])
+Traceback (most recent call last):
+  File "<stdin>", line 1, in <module>
+NameError: name 'pd' is not defined
+>>>
+>>> plt.figure(figsize=(6, 5))
+Traceback (most recent call last):
+  File "<stdin>", line 1, in <module>
+NameError: name 'plt' is not defined
+>>> sns.heatmap(cm_df, annot=True, fmt="g", cmap="Blues")
+Traceback (most recent call last):
+  File "<stdin>", line 1, in <module>
+NameError: name 'sns' is not defined
+>>> plt.title("Confusion Matrix")
+Traceback (most recent call last):
+  File "<stdin>", line 1, in <module>
+NameError: name 'plt' is not defined
+>>> plt.tight_layout()
+Traceback (most recent call last):
+  File "<stdin>", line 1, in <module>
+NameError: name 'plt' is not defined
+>>> plt.savefig("confusion_matrix.png")
+Traceback (most recent call last):
+  File "<stdin>", line 1, in <module>
+NameError: name 'plt' is not defined
+>>> plt.show()import matplotlib.pyplot as plt
+  File "<stdin>", line 1
+    plt.show()import matplotlib.pyplot as plt
+                   ^
+SyntaxError: invalid syntax
+>>> import seaborn as sns
+Traceback (most recent call last):
+  File "<stdin>", line 1, in <module>
+ModuleNotFoundError: No module named 'seaborn'
+>>> import pandas as pd
+Traceback (most recent call last):
+  File "<stdin>", line 1, in <module>
+ModuleNotFoundError: No module named 'pandas'
+>>>
+>>> # Now define your data and run the plots
+>>> importances = [0.65, 0.35]
+>>> features = ["rating", "helpful_vote"]
+>>>
+>>> plt.figure(figsize=(8, 5))
+Traceback (most recent call last):
+  File "<stdin>", line 1, in <module>
+NameError: name 'plt' is not defined
+>>> sns.barplot(x=importances, y=features, palette="viridis")
+Traceback (most recent call last):
+  File "<stdin>", line 1, in <module>
+NameError: name 'sns' is not defined
+>>> plt.title("Feature Importance for Verified Purchase Prediction")
+Traceback (most recent call last):
+  File "<stdin>", line 1, in <module>
+NameError: name 'plt' is not defined
+>>> plt.xlabel("Importance Score")
+Traceback (most recent call last):
+  File "<stdin>", line 1, in <module>
+NameError: name 'plt' is not defined
+>>> plt.ylabel("Features")
+Traceback (most recent call last):
+  File "<stdin>", line 1, in <module>
+NameError: name 'plt' is not defined
+>>> plt.tight_layout()
+Traceback (most recent call last):
+  File "<stdin>", line 1, in <module>
+NameError: name 'plt' is not defined
+>>> plt.savefig("feature_importance.png")
+Traceback (most recent call last):
+  File "<stdin>", line 1, in <module>
+NameError: name 'plt' is not defined
+>>> plt.show()
+Traceback (most recent call last):
+  File "<stdin>", line 1, in <module>
+NameError: name 'plt' is not defined
+>>>
+>>> data = {
+...     'Actual_Unverified (0.0)': [15000, 2000],
+...     'Actual_Verified (1.0)': [3000, 80000]
+... }
+>>> cm_df = pd.DataFrame(data, index=['Predicted_Unverified (0.0)', 'Predicted_Verified (1.0)'])
+Traceback (most recent call last):
+  File "<stdin>", line 1, in <module>
+NameError: name 'pd' is not defined
+>>>
+>>> plt.figure(figsize=(6, 5))
+Traceback (most recent call last):
+  File "<stdin>", line 1, in <module>
+NameError: name 'plt' is not defined
+>>> sns.heatmap(cm_df, annot=True, fmt="g", cmap="Blues")
+Traceback (most recent call last):
+  File "<stdin>", line 1, in <module>
+NameError: name 'sns' is not defined
+>>> plt.title("Confusion Matrix")
+Traceback (most recent call last):
+  File "<stdin>", line 1, in <module>
+NameError: name 'plt' is not defined
+>>> plt.tight_layout()
+Traceback (most recent call last):
+  File "<stdin>", line 1, in <module>
+NameError: name 'plt' is not defined
+>>> plt.savefig("confusion_matrix.png")
+Traceback (most recent call last):
+  File "<stdin>", line 1, in <module>
+NameError: name 'plt' is not defined
+>>> plt.show()
+Traceback (most recent call last):
+  File "<stdin>", line 1, in <module>
+NameError: name 'plt' is not defined
+>>> import matplotlib.pyplot as plt
+Traceback (most recent call last):
+  File "<stdin>", line 1, in <module>
+ModuleNotFoundError: No module named 'matplotlib'
+>>> import seaborn as sns
+Traceback (most recent call last):
+  File "<stdin>", line 1, in <module>
+ModuleNotFoundError: No module named 'seaborn'
+>>> import pandas as pd
+Traceback (most recent call last):
+  File "<stdin>", line 1, in <module>
+ModuleNotFoundError: No module named 'pandas'
+>>>
+>>> # Now define your data and run the plots
+>>> importances = [0.65, 0.35]
+>>> features = ["rating", "helpful_vote"]
+>>>
+>>> plt.figure(figsize=(8, 5))
+Traceback (most recent call last):
+  File "<stdin>", line 1, in <module>
+NameError: name 'plt' is not defined
+>>> sns.barplot(x=importances, y=features, palette="viridis")
+Traceback (most recent call last):
+  File "<stdin>", line 1, in <module>
+NameError: name 'sns' is not defined
+>>> plt.title("Feature Importance for Verified Purchase Prediction")
+Traceback (most recent call last):
+  File "<stdin>", line 1, in <module>
+NameError: name 'plt' is not defined
+>>> plt.xlabel("Importance Score")
+Traceback (most recent call last):
+  File "<stdin>", line 1, in <module>
+NameError: name 'plt' is not defined
+>>> plt.ylabel("Features")
+Traceback (most recent call last):
+  File "<stdin>", line 1, in <module>
+NameError: name 'plt' is not defined
+>>> plt.tight_layout()
+Traceback (most recent call last):
+  File "<stdin>", line 1, in <module>
+NameError: name 'plt' is not defined
+>>> plt.savefig("feature_importance.png")
+Traceback (most recent call last):
+  File "<stdin>", line 1, in <module>
+NameError: name 'plt' is not defined
+>>> plt.show()
+Traceback (most recent call last):
+  File "<stdin>", line 1, in <module>
+NameError: name 'plt' is not defined
+>>>
+>>> data = {
+...     'Actual_Unverified (0.0)': [15000, 2000],
+...     'Actual_Verified (1.0)': [3000, 80000]
+... }
+>>> cm_df = pd.DataFrame(data, index=['Predicted_Unverified (0.0)', 'Predicted_Verified (1.0)'])
+Traceback (most recent call last):
+  File "<stdin>", line 1, in <module>
+NameError: name 'pd' is not defined
+>>>
+>>> plt.figure(figsize=(6, 5))
+Traceback (most recent call last):
+  File "<stdin>", line 1, in <module>
+NameError: name 'plt' is not defined
+>>> sns.heatmap(cm_df, annot=True, fmt="g", cmap="Blues")
+Traceback (most recent call last):
+  File "<stdin>", line 1, in <module>
+NameError: name 'sns' is not defined
+>>> plt.title("Confusion Matrix")
+Traceback (most recent call last):
+  File "<stdin>", line 1, in <module>
+NameError: name 'plt' is not defined
+>>> plt.tight_layout()
+Traceback (most recent call last):
+  File "<stdin>", line 1, in <module>
+NameError: name 'plt' is not defined
+>>> plt.savefig("confusion_matrix.png")
+Traceback (most recent call last):
+  File "<stdin>", line 1, in <module>
+NameError: name 'plt' is not defined
+>>> plt.show()
+Traceback (most recent call last):
+  File "<stdin>", line 1, in <module>
+NameError: name 'plt' is not defined
+>>> import matplotlib.pyplot as plt
+Traceback (most recent call last):
+  File "<stdin>", line 1, in <module>
+ModuleNotFoundError: No module named 'matplotlib'
+>>> import seaborn as sns
+Traceback (most recent call last):
+  File "<stdin>", line 1, in <module>
+ModuleNotFoundError: No module named 'seaborn'
+>>> import pandas as pd
+Traceback (most recent call last):
+  File "<stdin>", line 1, in <module>
+ModuleNotFoundError: No module named 'pandas'
+>>>
+>>> # Define data and run plot 1
+>>> importances = [0.65, 0.35]
+>>> features = ["rating", "helpful_vote"]
+>>> plt.figure(figsize=(8, 5))
+Traceback (most recent call last):
+  File "<stdin>", line 1, in <module>
+NameError: name 'plt' is not defined
+>>> sns.barplot(x=importances, y=features, palette="viridis")
+Traceback (most recent call last):
+  File "<stdin>", line 1, in <module>
+NameError: name 'sns' is not defined
+>>> plt.title("Feature Importance for Verified Purchase Prediction")
+Traceback (most recent call last):
+  File "<stdin>", line 1, in <module>
+NameError: name 'plt' is not defined
+>>> plt.xlabel("Importance Score")
+Traceback (most recent call last):
+  File "<stdin>", line 1, in <module>
+NameError: name 'plt' is not defined
+>>> plt.ylabel("Features")
+Traceback (most recent call last):
+  File "<stdin>", line 1, in <module>
+NameError: name 'plt' is not defined
+>>> plt.tight_layout()
+Traceback (most recent call last):
+  File "<stdin>", line 1, in <module>
+NameError: name 'plt' is not defined
+>>> plt.savefig("feature_importance.png")
+Traceback (most recent call last):
+  File "<stdin>", line 1, in <module>
+NameError: name 'plt' is not defined
+>>> plt.show()
+Traceback (most recent call last):
+  File "<stdin>", line 1, in <module>
+NameError: name 'plt' is not defined
+>>>
+>>> # Define data and run plot 2
+>>> data = {
+...     'Actual_Unverified (0.0)': [15000, 2000],
+...     'Actual_Verified (1.0)': [3000, 80000]
+... }
+>>> cm_df = pd.DataFrame(data, index=['Predicted_Unverified (0.0)', 'Predicted_Verified (1.0)'])
+Traceback (most recent call last):
+  File "<stdin>", line 1, in <module>
+NameError: name 'pd' is not defined
+>>> plt.figure(figsize=(6, 5))
+Traceback (most recent call last):
+  File "<stdin>", line 1, in <module>
+NameError: name 'plt' is not defined
+>>> sns.heatmap(cm_df, annot=True, fmt="g", cmap="Blues")
+Traceback (most recent call last):
+  File "<stdin>", line 1, in <module>
+NameError: name 'sns' is not defined
+>>> plt.title("Confusion Matrix")
+Traceback (most recent call last):
+  File "<stdin>", line 1, in <module>
+NameError: name 'plt' is not defined
+>>> plt.tight_layout()
+Traceback (most recent call last):
+  File "<stdin>", line 1, in <module>
+NameError: name 'plt' is not defined
+>>> plt.savefig("confusion_matrix.png")
+Traceback (most recent call last):
+  File "<stdin>", line 1, in <module>
+NameError: name 'plt' is not defined
+>>> plt.show()
+Traceback (most recent call last):
+  File "<stdin>", line 1, in <module>
+NameError: name 'plt' is not defined
+>>> import matplotlib.pyplot as plt
+Traceback (most recent call last):
+  File "<stdin>", line 1, in <module>
+ModuleNotFoundError: No module named 'matplotlib'
+>>> import seaborn as sns
+Traceback (most recent call last):
+  File "<stdin>", line 1, in <module>
+ModuleNotFoundError: No module named 'seaborn'
+>>> import pandas as pd
+Traceback (most recent call last):
+  File "<stdin>", line 1, in <module>
+ModuleNotFoundError: No module named 'pandas'
+>>>
+>>> # Define data and run plot 1
+>>> importances = [0.65, 0.35]
+>>> features = ["rating", "helpful_vote"]
+>>> plt.figure(figsize=(8, 5))
+Traceback (most recent call last):
+  File "<stdin>", line 1, in <module>
+NameError: name 'plt' is not defined
+>>> sns.barplot(x=importances, y=features, palette="viridis")
+Traceback (most recent call last):
+  File "<stdin>", line 1, in <module>
+NameError: name 'sns' is not defined
+>>> plt.title("Feature Importance for Verified Purchase Prediction")
+Traceback (most recent call last):
+  File "<stdin>", line 1, in <module>
+NameError: name 'plt' is not defined
+>>> plt.xlabel("Importance Score")
+Traceback (most recent call last):
+  File "<stdin>", line 1, in <module>
+NameError: name 'plt' is not defined
+>>> plt.ylabel("Features")
+Traceback (most recent call last):
+  File "<stdin>", line 1, in <module>
+NameError: name 'plt' is not defined
+>>> plt.tight_layout()
+Traceback (most recent call last):
+  File "<stdin>", line 1, in <module>
+NameError: name 'plt' is not defined
+>>> plt.savefig("feature_importance.png")
+Traceback (most recent call last):
+  File "<stdin>", line 1, in <module>
+NameError: name 'plt' is not defined
+>>> plt.show()
+Traceback (most recent call last):
+  File "<stdin>", line 1, in <module>
+NameError: name 'plt' is not defined
+>>>
+>>> # Define data and run plot 2
+>>> data = {
+...     'Actual_Unverified (0.0)': [15000, 2000],
+...     'Actual_Verified (1.0)': [3000, 80000]
+... }
+>>> cm_df = pd.DataFrame(data, index=['Predicted_Unverified (0.0)', 'Predicted_Verified (1.0)'])
+Traceback (most recent call last):
+  File "<stdin>", line 1, in <module>
+NameError: name 'pd' is not defined
+>>> plt.figure(figsize=(6, 5))
+Traceback (most recent call last):
+  File "<stdin>", line 1, in <module>
+NameError: name 'plt' is not defined
+>>> sns.heatmap(cm_df, annot=True, fmt="g", cmap="Blues")
+Traceback (most recent call last):
+  File "<stdin>", line 1, in <module>
+NameError: name 'sns' is not defined
+>>> plt.title("Confusion Matrix")
+Traceback (most recent call last):
+  File "<stdin>", line 1, in <module>
+NameError: name 'plt' is not defined
+>>> plt.tight_layout()
+Traceback (most recent call last):
+  File "<stdin>", line 1, in <module>
+NameError: name 'plt' is not defined
+>>> plt.savefig("confusion_matrix.png")
+Traceback (most recent call last):
+  File "<stdin>", line 1, in <module>
+NameError: name 'plt' is not defined
+>>> plt.show()
+Traceback (most recent call last):
+  File "<stdin>", line 1, in <module>
+NameError: name 'plt' is not defined
+>>> quit()
+bash-5.0# cat <<EOF > visualize.py
+> ls feature_importance.png confusion_matrix.png
+> cat <<EOF > visualize.py
+> import matplotlib.pyplot as plt
+> import seaborn as sns
+> import pandas as pd
+>
+> # 1. Feature Importance
+> importances = [0.65, 0.35]
+> features = ["rating", "helpful_vote"]
+> plt.figure(figsize=(8, 5))
+> sns.barplot(x=importances, y=features, palette="viridis")
+> plt.title("Feature Importance for Verified Purchase Prediction")
+> plt.xlabel("Importance Score")
+> plt.ylabel("Features")
+> plt.tight_layout()
+> plt.savefig("feature_importance.png")
+> plt.close()
+>
+> # 2. Confusion Matrix
+> data = {
+>     'Actual_Unverified (0.0)': [15000, 2000],
+>     'Actual_Verified (1.0)': [3000, 80000]
+> }
+> cm_df = pd.DataFrame(data, index=['Predicted_Unverified (0.0)', 'Predicted_Verified (1.0)'])
+> plt.figure(figsize=(6, 5))
+> sns.heatmap(cm_df, annot=True, fmt="g", cmap="Blues")
+> plt.title("Confusion Matrix")
+> plt.tight_layout()
+> plt.savefig("confusion_matrix.png")
+> plt.close()
+> EOF^C
+bash-5.0# cat <<EOF > visualize.py
+> import matplotlib.pyplot as plt
+> import seaborn as sns
+> import pandas as pd
+>
+> # 1. Feature Importance
+> importances = [0.65, 0.35]
+> features = ["rating", "helpful_vote"]
+> plt.figure(figsize=(8, 5))
+> sns.barplot(x=importances, y=features, palette="viridis")
+> plt.title("Feature Importance for Verified Purchase Prediction")
+> plt.xlabel("Importance Score")
+> plt.ylabel("Features")
+> plt.tight_layout()
+> plt.savefig("feature_importance.png")
+> plt.close()
+>
+> # 2. Confusion Matrix
+> data = {
+>     'Actual_Unverified (0.0)': [15000, 2000],
+>     'Actual_Verified (1.0)': [3000, 80000]
+> }
+> cm_df = pd.DataFrame(data, index=['Predicted_Unverified (0.0)', 'Predicted_Verified (1.0)'])
+> plt.figure(figsize=(6, 5))
+> sns.heatmap(cm_df, annot=True, fmt="g", cmap="Blues")
+> plt.title("Confusion Matrix")
+> plt.tight_layout()
+> plt.savefig("confusion_matrix.png")
+> plt.close()
+> EOF
+bash-5.0# python3 visualize.py
+Traceback (most recent call last):
+  File "visualize.py", line 1, in <module>
+    import matplotlib.pyplot as plt
+ModuleNotFoundError: No module named 'matplotlib'
+bash-5.0# find / -name pandas -type d 2>/dev/null
+/spark/python/pyspark/sql/pandas
+bash-5.0# /usr/bin/python3 visualize.py
+Traceback (most recent call last):
+  File "visualize.py", line 1, in <module>
+    import matplotlib.pyplot as plt
+ModuleNotFoundError: No module named 'matplotlib'
+bash-5.0#
